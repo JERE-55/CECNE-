@@ -1,68 +1,151 @@
-# CECNE - Système de Gestion d'Évangélisation
+# CECNE - Centre d'Évangélisation
 
-Une application web moderne pour la gestion des activités d'évangélisation avec Firebase comme backend.
+Application web complète pour la gestion d'évangélisation avec Firebase.
 
-## 🚀 Fonctionnalités
+## 🔥 Configuration Firebase
 
-- **Authentification sécurisée** avec Firebase Firestore
-- **Gestion des âmes** converties avec photos et géolocalisation
-- **Gestion d'équipe** avec différents rôles (Coordonnateur, Adjoint, Évangéliste)
-- **Rapports d'évangélisation** détaillés avec suivi de fidélisation
-- **Carte interactive** avec localisation des évangélistes et âmes
-- **Bibliothèque de documents** avec upload vers Firebase Storage
-- **Chat en temps réel** par groupe
-- **Tableaux de bord** avec statistiques avancées
-- **Mode sombre** automatique
-- **Interface responsive** pour mobile et desktop
+L'application utilise Firebase pour le stockage des données et l'authentification. La configuration est déjà incluse dans le code.
 
-## 🔧 Installation
+### Configuration Firebase requise
 
-1. **Cloner le projet**
-```bash
-git clone <votre-repo>
-cd cecne-firebase
+```javascript
+// firebase-config.js contient déjà cette configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyAaegtkBUd-fk9F0yokbNGxgRpF57E0dlE",
+    authDomain: "cecne-768ff.firebaseapp.com",
+    projectId: "cecne-768ff",
+    storageBucket: "cecne-768ff.firebasestorage.app",
+    messagingSenderId: "295270043435",
+    appId: "1:295270043435:web:357f8fafdeb5671d51bf6e"
+};
 ```
 
-2. **Configuration Firebase**
-   - Créez un projet sur [Firebase Console](https://console.firebase.google.com/)
-   - Activez Firestore Database
-   - Activez Storage
-   - Copiez la configuration dans `index.html` (déjà configurée)
+## 🚀 Installation
 
-3. **Règles Firestore**
+1. **Téléchargez les fichiers** :
+   - `index.html` - Interface utilisateur complète
+   - `firebase-config.js` - Configuration Firebase et logique métier
+
+2. **Servez l'application** via un serveur web local :
+   ```bash
+   # Option 1: Python
+   python -m http.server 8000
    
-   Ajoutez ces règles dans Firebase Console > Firestore Database > Règles :
+   # Option 2: Node.js (live-server)
+   npx live-server
    
+   # Option 3: PHP
+   php -S localhost:8000
+   ```
+
+3. **Ouvrez votre navigateur** et allez à `http://localhost:8000`
+
+## 🔑 Connexion par défaut
+
+L'application crée automatiquement un utilisateur administrateur :
+
+- **Nom d'utilisateur** : `admin`
+- **Mot de passe** : `admin123`
+- **Rôle** : Coordinateur
+
+## 📱 Fonctionnalités
+
+### 🎯 Tableau de bord
+- Statistiques en temps réel (âmes, évangélistes, rapports)
+- Actions rapides
+- Activités récentes
+- Annonces (pour coordinateurs)
+
+### 👥 Gestion des âmes
+- Ajouter de nouvelles âmes converties
+- Upload de photos
+- Recherche et filtrage
+- Export des données
+- Suivi par évangéliste et groupe
+
+### 👨‍💼 Gestion des évangélistes
+- Création de comptes évangélistes
+- Rôles : Évangéliste, Assistant, Coordinateur
+- Gestion des permissions
+- Photos de profil
+
+### 📊 Rapports d'évangélisation
+- Création de rapports détaillés
+- Suivi des conversions et suivis
+- Sélection des âmes rencontrées
+- Impression des rapports
+
+### 🗺️ Carte interactive
+- Localisation des évangélistes et âmes
+- Statistiques par commune de Kinshasa
+- Vue d'ensemble géographique
+
+### 💬 Système de chat
+- Chat par groupe
+- Messages en temps réel
+- Interface intuitive
+
+### 📚 Bibliothèque de documents
+- Upload de fichiers
+- Organisation par catégories
+- Téléchargement et partage
+
+### 📅 Suivi des présences
+- Marquer les présences
+- Statistiques de participation
+- Historique détaillé
+
+### 👤 Gestion du profil
+- Modification des informations personnelles
+- Upload de photo de profil
+- Changement de mot de passe
+
+## 🔐 Rôles et permissions
+
+### Coordinateur
+- Accès complet à toutes les fonctionnalités
+- Gestion des évangélistes
+- Publication d'annonces
+- Vue globale des données
+
+### Assistant
+- Gestion des âmes et rapports
+- Vue limitée aux données de son groupe
+- Pas de gestion d'évangélistes
+
+### Évangéliste
+- Ajout d'âmes converties
+- Création de rapports personnels
+- Accès limité à ses propres données
+
+## 🛠️ Configuration Firebase (pour développeurs)
+
+### Firestore Database
+
+Créez les collections suivantes dans Firestore :
+
+```
+/users/{userId}
+/souls/{soulId}
+/reports/{reportId}
+/groups/{groupId}
+/documents/{documentId}
+/attendance/{attendanceId}
+/announcements/{announcementId}
+```
+
+### Règles Firestore
+
 ```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Evangelists collection
-    match /evangelists/{document} {
+    // Users collection
+    match /users/{userId} {
       allow read, write: if request.auth != null;
     }
     
-    // Souls collection
-    match /souls/{document} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Reports collection
-    match /reports/{document} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Groups collection
-    match /groups/{document} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Settings collection
-    match /settings/{document} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Allow all other collections
+    // All other collections
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
@@ -70,10 +153,8 @@ service cloud.firestore {
 }
 ```
 
-4. **Règles Storage**
-   
-   Ajoutez ces règles dans Firebase Console > Storage > Règles :
-   
+### Règles Storage
+
 ```javascript
 rules_version = '2';
 service firebase.storage {
@@ -85,172 +166,79 @@ service firebase.storage {
 }
 ```
 
-5. **Lancer l'application**
-   
-   Servez les fichiers via un serveur web local :
-   
-```bash
-# Avec Python 3
-python -m http.server 8000
+## 🎨 Interface utilisateur
 
-# Avec Node.js
-npx http-server
+- **Design moderne** avec Tailwind CSS
+- **Responsive** pour mobile et desktop
+- **Mode sombre** disponible
+- **Animations fluides**
+- **Interface en français**
 
-# Avec PHP
-php -S localhost:8000
-```
+## 🔧 Technologies utilisées
 
-6. **Accéder à l'application**
-   
-   Ouvrez votre navigateur sur : `http://localhost:8000`
+- **Frontend** : HTML5, CSS3, JavaScript ES6+
+- **Framework CSS** : Tailwind CSS
+- **Icônes** : Font Awesome
+- **Backend** : Firebase (Firestore, Storage, Auth)
+- **Cartes** : Simulation pour Kinshasa, RDC
 
-## 👤 Connexion par défaut
+## 📋 Données par défaut
 
-**Utilisateur administrateur :**
-- **Nom d'utilisateur :** admin
-- **Mot de passe :** admin123
+L'application crée automatiquement :
 
-Cet utilisateur sera créé automatiquement au premier lancement.
+### Groupes
+- Centre-ville
+- Gombe
+- Kalamu
+- Kinshasa
+- Ngiri-Ngiri
 
-## 📱 Utilisation
+### Utilisateur admin
+- Accès complet
+- Rôle coordinateur
+- Groupe Centre-ville
 
-### Rôles utilisateurs
-
-1. **Coordonnateur**
-   - Accès complet à toutes les fonctionnalités
-   - Gestion des évangélistes et groupes
-   - Statistiques globales
-   - Création d'annonces
-
-2. **Adjoint**
-   - Gestion d'équipe limitée
-   - Vue d'ensemble de son groupe
-   - Création de rapports
-
-3. **Évangéliste**
-   - Ajout d'âmes et création de rapports
-   - Vue limitée à son groupe
-   - Gestion de son profil
-
-### Fonctionnalités principales
-
-#### 🏠 Dashboard
-- Statistiques en temps réel
-- Âmes et rapports récents
-- Actions rapides
-- Graphiques (pour coordinateurs)
-
-#### 👥 Gestion des âmes
-- Ajout avec photo et localisation automatique
-- Suivi des conversions
-- Historique des rencontres
-- Filtrage par groupe
-
-#### 📊 Rapports d'évangélisation
-- Création de rapports détaillés
-- Suivi de fidélisation
-- Collaborateurs multiples
-- Types d'intervention variés
-
-#### 🗺️ Carte interactive
-- Visualisation géographique
-- Marqueurs différenciés par rôle
-- Informations détaillées en popup
-- Localisation de Kinshasa, RDC
-
-#### 📚 Bibliothèque
-- Upload de documents
-- Catégorisation
-- Téléchargement sécurisé
-- Gestion des permissions
-
-#### ⚙️ Administration
-- Gestion des groupes
-- Paramètres du site
-- Gestion des utilisateurs
-- Système de notifications
-
-## 🔒 Sécurité
-
-- **Authentification** : Système de connexion sécurisé
-- **Permissions** : Contrôle d'accès basé sur les rôles
-- **Validation** : Validation côté client et serveur
-- **Soft delete** : Suppression logique des données
-
-## 🌐 Technologies utilisées
-
-- **Frontend :** HTML5, CSS3, JavaScript ES6+
-- **Backend :** Firebase (Firestore, Storage, Auth)
-- **UI Framework :** Tailwind CSS
-- **Icônes :** Lucide Icons
-- **Cartes :** Leaflet.js
-- **Graphiques :** Chart.js
-
-## 📱 Responsive Design
-
-L'application est entièrement responsive et s'adapte aux :
-- 📱 Mobiles (320px+)
-- 📟 Tablettes (768px+)
-- 💻 Ordinateurs (1024px+)
-
-## 🔄 Sauvegarde automatique
-
-Toutes les données sont automatiquement sauvegardées sur Firebase :
-- **Temps réel** : Synchronisation instantanée
-- **Hors ligne** : Cache local avec synchronisation
-- **Sécurisé** : Chiffrement des données
-
-## 🎨 Personnalisation
-
-### Changer le nom et logo
-1. Connectez-vous en tant que Coordonnateur
-2. Cliquez sur l'icône ⚙️ dans l'en-tête
-3. Modifiez le nom et uploadez un logo
-4. Sauvegardez les modifications
-
-### Ajouter des groupes
-1. Allez dans Dashboard
-2. Cliquez sur "Gérer les groupes"
-3. Ajoutez un nouveau groupe
-4. Assignez des évangélistes
-
-## 🐛 Résolution de problèmes
+## 🐛 Dépannage
 
 ### Problème de connexion
-- Vérifiez votre configuration Firebase
-- Contrôlez les règles Firestore
-- Vérifiez la console du navigateur
+- Vérifiez que Firebase est correctement configuré
+- Utilisez les identifiants par défaut : admin/admin123
 
-### Erreurs d'upload
-- Vérifiez les règles Storage
-- Contrôlez la taille des fichiers (max 10MB)
-- Formats supportés : jpg, png, pdf, doc, docx
+### Erreurs de chargement
+- Assurez-vous d'utiliser un serveur web (pas file://)
+- Vérifiez la connexion internet pour Firebase
 
-### Données non sauvegardées
-- Vérifiez votre connexion internet
-- Rechargez la page
-- Contrôlez les logs Firebase
+### Problèmes d'upload
+- Vérifiez les règles Firebase Storage
+- Formats supportés : images (jpg, png, gif)
+
+### Console du navigateur
+Ouvrez les outils de développement (F12) pour voir les erreurs détaillées.
 
 ## 📞 Support
 
 Pour toute question ou problème :
-1. Vérifiez la console du navigateur (F12)
-2. Contrôlez les logs Firebase
-3. Documentez l'erreur avec captures d'écran
+1. Vérifiez la console du navigateur pour les erreurs
+2. Assurez-vous que Firebase est correctement configuré
+3. Utilisez les identifiants par défaut pour tester
 
-## 📈 Évolutions futures
+## 🔄 Mise à jour
 
-- [ ] Notifications push
-- [ ] Exportation de données
-- [ ] API REST
-- [ ] Application mobile native
-- [ ] Intégration calendrier
-- [ ] Système de messagerie avancé
+L'application se met à jour automatiquement avec les dernières données Firebase. Aucune maintenance manuelle requise.
 
-## 📄 Licence
+## 📱 Compatibilité
 
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+- **Navigateurs** : Chrome, Firefox, Safari, Edge (versions récentes)
+- **Appareils** : Desktop, tablettes, smartphones
+- **Connexion** : Internet requis pour Firebase
+
+## 🌍 Localisation
+
+- Interface entièrement en français
+- Dates au format français (DD/MM/YYYY)
+- Adaptée pour Kinshasa, RDC
 
 ---
 
-**Développé avec ❤️ pour l'évangélisation moderne** 
+**CECNE - Centre d'Évangélisation**  
+*Application de gestion d'évangélisation moderne et complète* 

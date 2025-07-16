@@ -1,1786 +1,1682 @@
-// Application state
-let currentUser = null;
-let currentPage = 'dashboardPage';
-let map = null;
-let evangelizationChart = null;
-let groupStatsChart = null;
-let siteSettings = {
-    name: "CECNE",
-    slogan: "Centre d'Évangélisation et Gestion des Âmes",
-    logo: null
+// Configuration et initialisation Firebase
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { 
+    getFirestore, 
+    collection, 
+    doc, 
+    setDoc, 
+    getDoc, 
+    getDocs, 
+    updateDoc, 
+    deleteDoc, 
+    query, 
+    where, 
+    orderBy, 
+    onSnapshot,
+    addDoc,
+    serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { 
+    getStorage, 
+    ref, 
+    uploadBytes, 
+    getDownloadURL, 
+    deleteObject 
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+import { 
+    getAuth, 
+    signInWithEmailAndPassword, 
+    createUserWithEmailAndPassword, 
+    signOut, 
+    onAuthStateChanged 
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+// Configuration Firebase
+const firebaseConfig = {
+    apiKey: "AIzaSyAaegtkBUd-fk9F0yokbNGxgRpF57E0dlE",
+    authDomain: "cecne-768ff.firebaseapp.com",
+    projectId: "cecne-768ff",
+    storageBucket: "cecne-768ff.firebasestorage.app",
+    messagingSenderId: "295270043435",
+    appId: "1:295270043435:web:357f8fafdeb5671d51bf6e"
 };
 
-// Coordonnées de l'église CECNE (4°23'57.86"S, 15°22'15.91"E)
-const CHURCH_COORDINATES = [-4.399406, 15.371086];
+// Initialiser Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const storage = getStorage(app);
+const auth = getAuth(app);
 
-// Initialize Firebase App
-async function initializeFirebaseApp() {
-    try {
-        console.log('Initializing Firebase app...');
-        
-        // Initialize default data if needed
-        await initializeDefaultData();
-        
-        // Load site settings
-        await loadSiteSettings();
-        
-        // Show login screen
-        showLoginScreen();
-        
-        // Initialize icons
-        lucide.createIcons();
-        
-    } catch (error) {
-        console.error('Error initializing Firebase app:', error);
-        showNotification('Erreur lors de l\'initialisation de l\'application', 'error');
-    }
-}
+// Variables globales
+let currentUser = null;
+let currentPage = 'dashboard';
+let isLoading = false;
 
-// Initialize default data
-async function initializeDefaultData() {
-    const { db, collection, getDocs, setDoc, doc } = window.firebase;
-    
-    try {
-        // Check if default data exists
-        const groupsSnapshot = await getDocs(collection(db, 'groups'));
-        const evangelistsSnapshot = await getDocs(collection(db, 'evangelists'));
+// Données par défaut
+const defaultGroups = [
+    { id: 'centre-ville', name: 'Centre-ville', description: 'Zone centrale de Kinshasa' },
+    { id: 'gombe', name: 'Gombe', description: 'Commune de la Gombe' },
+    { id: 'kalamu', name: 'Kalamu', description: 'Commune de Kalamu' },
+    { id: 'kinshasa', name: 'Kinshasa', description: 'Commune de Kinshasa' },
+    { id: 'ngiri-ngiri', name: 'Ngiri-Ngiri', description: 'Commune de Ngiri-Ngiri' }
+];
+
+// Initialisation de l'application
+document.addEventListener('DOMContentLoaded', async () => {
+    setTimeout(async () => {
+        await initializeFirebaseData();
+        initializeEventListeners();
         
-        if (groupsSnapshot.empty) {
-            // Create default groups
-            const defaultGroups = [
-                { id: 'centre-ville', name: "Centre-ville", createdBy: 'admin', status: "active", createdAt: new Date() },
-                { id: 'quartier-nord', name: "Quartier Nord", createdBy: 'admin', status: "active", createdAt: new Date() },
-                { id: 'quartier-sud', name: "Quartier Sud", createdBy: 'admin', status: "active", createdAt: new Date() }
-            ];
-            
-            for (const group of defaultGroups) {
-                await setDoc(doc(db, 'groups', group.id), group);
+        // Simuler un délai de chargement
+        setTimeout(() => {
+            document.getElementById('loadingScreen').style.display = 'none';
+            document.getElementById('loginScreen').style.display = 'flex';
+        }, 1500);
+    }, 500);
+});
+
+// Initialiser les données par défaut dans Firebase
+async function initializeFirebaseData() {
+    try {
+        // Créer les groupes par défaut
+        for (const group of defaultGroups) {
+            const groupRef = doc(db, 'groups', group.id);
+            const groupDoc = await getDoc(groupRef);
+            if (!groupDoc.exists()) {
+                await setDoc(groupRef, {
+                    ...group,
+                    createdAt: serverTimestamp()
+                });
             }
-            console.log('Default groups created');
         }
-        
-        if (evangelistsSnapshot.empty) {
-            // Create default admin user
-            const defaultAdmin = {
-                id: 'admin',
-                fullName: "Administrateur CECNE",
-                phone: "+243 99 988 77 66",
-                address: "Centre-ville Q7",
-                group: "Centre-ville",
-                role: "Coordonnateur",
-                baptismDate: "2015-05-15",
-                username: "admin",
-                password: "admin123", // In production, this should be hashed
-                permissions: "full",
-                status: "active",
-                soulsWon: 0,
-                lat: CHURCH_COORDINATES[0],
-                lng: CHURCH_COORDINATES[1],
-                picture: null,
-                createdAt: new Date()
-            };
-            
-            await setDoc(doc(db, 'evangelists', 'admin'), defaultAdmin);
-            console.log('Default admin user created');
+
+        // Créer l'utilisateur administrateur par défaut
+        const adminRef = doc(db, 'users', 'admin');
+        const adminDoc = await getDoc(adminRef);
+        if (!adminDoc.exists()) {
+            await setDoc(adminRef, {
+                username: 'admin',
+                password: 'admin123', // En production, il faudrait hasher ce mot de passe
+                fullName: 'Administrateur CECNE',
+                email: 'admin@cecne.org',
+                phone: '+243 XXX XXX XXX',
+                role: 'coordinator',
+                group: 'centre-ville',
+                address: 'Kinshasa, RDC',
+                avatar: '',
+                createdAt: serverTimestamp(),
+                lastLogin: null
+            });
         }
-        
+
+        console.log('✅ Données par défaut initialisées');
     } catch (error) {
-        console.error('Error initializing default data:', error);
+        console.error('❌ Erreur lors de l\'initialisation:', error);
     }
 }
 
-// Load site settings
-async function loadSiteSettings() {
-    const { db, doc, getDoc } = window.firebase;
+// Initialiser les événements
+function initializeEventListeners() {
+    // Login form
+    document.getElementById('loginForm').addEventListener('submit', handleLogin);
     
-    try {
-        const settingsDoc = await getDoc(doc(db, 'settings', 'site'));
-        if (settingsDoc.exists()) {
-            siteSettings = { ...siteSettings, ...settingsDoc.data() };
-        }
-        updateSiteBranding();
-    } catch (error) {
-        console.error('Error loading site settings:', error);
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+    
+    // Sidebar navigation
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const page = item.dataset.page;
+            if (page) showPage(page);
+        });
+    });
+
+    // Quick actions
+    document.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const action = e.currentTarget.dataset.action;
+            handleQuickAction(action);
+        });
+    });
+
+    // User menu
+    document.getElementById('userMenuBtn').addEventListener('click', toggleUserMenu);
+    
+    // Dark mode toggle
+    document.getElementById('darkModeToggle').addEventListener('click', toggleDarkMode);
+
+    // Modal close buttons
+    document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', closeModals);
+    });
+
+    // Form submissions
+    document.getElementById('soulForm').addEventListener('submit', handleSoulSubmit);
+    document.getElementById('evangelistForm').addEventListener('submit', handleEvangelistSubmit);
+    document.getElementById('reportForm').addEventListener('submit', handleReportSubmit);
+    document.getElementById('documentForm').addEventListener('submit', handleDocumentSubmit);
+    document.getElementById('attendanceForm').addEventListener('submit', handleAttendanceSubmit);
+    document.getElementById('announcementForm').addEventListener('submit', handleAnnouncementSubmit);
+    document.getElementById('profileForm').addEventListener('submit', handleProfileSubmit);
+
+    // Button clicks
+    document.getElementById('addSoulBtn').addEventListener('click', () => openSoulModal());
+    document.getElementById('addEvangelistBtn').addEventListener('click', () => openEvangelistModal());
+    document.getElementById('addReportBtn').addEventListener('click', () => openReportModal());
+    document.getElementById('uploadDocumentBtn').addEventListener('click', () => openDocumentModal());
+    document.getElementById('markAttendanceBtn').addEventListener('click', () => openAttendanceModal());
+    document.getElementById('addAnnouncementBtn').addEventListener('click', () => openAnnouncementModal());
+    
+    // Search functionality
+    document.getElementById('searchSouls')?.addEventListener('input', filterSouls);
+    document.getElementById('searchReports')?.addEventListener('input', filterReports);
+    document.getElementById('searchDocuments')?.addEventListener('input', filterDocuments);
+    
+    // Chat functionality
+    document.getElementById('sendMessageBtn')?.addEventListener('click', sendMessage);
+    document.getElementById('messageInput')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+
+    // File inputs
+    document.getElementById('avatarInput')?.addEventListener('change', handleAvatarChange);
+    document.getElementById('changeAvatarBtn')?.addEventListener('click', () => {
+        document.getElementById('avatarInput').click();
+    });
+
+    // Print functionality
+    document.getElementById('printReportsBtn')?.addEventListener('click', printReports);
+    document.getElementById('exportSoulsBtn')?.addEventListener('click', exportSouls);
+}
+
+// Gestion de la connexion
+async function handleLogin(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+    
+    if (!username || !password) {
+        showNotification('Veuillez remplir tous les champs', 'error');
+        return;
     }
-}
 
-// Save site settings
-async function saveSiteSettings() {
-    const { db, doc, setDoc } = window.firebase;
-    
     try {
-        await setDoc(doc(db, 'settings', 'site'), siteSettings);
-        console.log('Site settings saved');
-    } catch (error) {
-        console.error('Error saving site settings:', error);
-    }
-}
-
-// Show login screen
-function showLoginScreen() {
-    document.getElementById('loadingScreen').classList.add('hidden');
-    document.getElementById('loginScreen').classList.remove('hidden');
-    document.getElementById('mainApp').classList.add('hidden');
-}
-
-// Authentication functions
-async function loginUser(username, password) {
-    const { db, collection, query, where, getDocs } = window.firebase;
-    
-    try {
-        // Query for user by username
-        const q = query(
-            collection(db, 'evangelists'), 
-            where('username', '==', username),
-            where('status', '==', 'active')
-        );
+        showLoading(true);
         
-        const querySnapshot = await getDocs(q);
+        // Chercher l'utilisateur dans Firestore
+        const userRef = doc(db, 'users', username);
+        const userDoc = await getDoc(userRef);
         
-        if (querySnapshot.empty) {
-            throw new Error('Utilisateur non trouvé');
+        if (!userDoc.exists()) {
+            showNotification('Nom d\'utilisateur ou mot de passe incorrect', 'error');
+            return;
         }
         
-        const userDoc = querySnapshot.docs[0];
         const userData = userDoc.data();
         
-        // Check password (in production, use proper password hashing)
+        // Vérifier le mot de passe (en production, utiliser un hash)
         if (userData.password !== password) {
-            throw new Error('Mot de passe incorrect');
+            showNotification('Nom d\'utilisateur ou mot de passe incorrect', 'error');
+            return;
         }
         
-        // Set current user
-        currentUser = { id: userDoc.id, ...userData };
-        
-        // Show main app
-        document.getElementById('loginScreen').classList.add('hidden');
-        document.getElementById('mainApp').classList.remove('hidden');
-        
-        // Initialize app
-        await initializeMainApp();
-        
-        return currentUser;
-        
-    } catch (error) {
-        console.error('Login error:', error);
-        throw error;
-    }
-}
-
-// Initialize main application
-async function initializeMainApp() {
-    try {
-        // Update user display
-        document.getElementById('userName').textContent = currentUser.fullName;
-        document.getElementById('userRole').textContent = currentUser.role;
-        document.getElementById('headerSubtitle').textContent = currentUser.group;
-        
-        updateUserProfileDisplay();
-        
-        // Load app data
-        await Promise.all([
-            loadDashboardData(),
-            loadGroupSelects(),
-            updatePermissions()
-        ]);
-        
-        // Show dashboard
-        showPage('dashboardPage');
-        
-        // Initialize map after a delay
-        setTimeout(() => {
-            if (document.getElementById('map')) {
-                initMap();
-            }
-        }, 1000);
-        
-        showNotification('Connexion réussie !', 'success');
-        
-    } catch (error) {
-        console.error('Error initializing main app:', error);
-        showNotification('Erreur lors de l\'initialisation', 'error');
-    }
-}
-
-// Load dashboard data
-async function loadDashboardData() {
-    try {
-        await Promise.all([
-            updateStats(),
-            loadRecentSouls(),
-            loadRecentReports(),
-            loadAnnouncements()
-        ]);
-        
-        if (isCoordonnateur()) {
-            document.getElementById('announcementsSection').classList.remove('hidden');
-            document.getElementById('statisticsChartSection').classList.remove('hidden');
-            setTimeout(() => {
-                initializeCharts();
-            }, 500);
-        }
-        
-    } catch (error) {
-        console.error('Error loading dashboard data:', error);
-    }
-}
-
-// Get data functions
-async function getVisibleSouls() {
-    const { db, collection, query, where, getDocs } = window.firebase;
-    
-    try {
-        let q;
-        if (canSeeAllData()) {
-            q = query(collection(db, 'souls'), where('status', '==', 'active'));
-        } else {
-            q = query(
-                collection(db, 'souls'), 
-                where('status', '==', 'active'),
-                where('group', '==', currentUser.group)
-            );
-        }
-        
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-    } catch (error) {
-        console.error('Error getting souls:', error);
-        return [];
-    }
-}
-
-async function getVisibleEvangelists() {
-    const { db, collection, query, where, getDocs } = window.firebase;
-    
-    try {
-        let q;
-        if (canSeeAllData()) {
-            q = collection(db, 'evangelists');
-        } else {
-            q = query(
-                collection(db, 'evangelists'),
-                where('group', '==', currentUser.group)
-            );
-        }
-        
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(e => e.status === 'active' || e.status === 'blocked');
-        
-    } catch (error) {
-        console.error('Error getting evangelists:', error);
-        return [];
-    }
-}
-
-async function getVisibleReports() {
-    const { db, collection, query, where, getDocs } = window.firebase;
-    
-    try {
-        let reports = [];
-        
-        if (canSeeAllData()) {
-            const q = query(collection(db, 'reports'), where('status', '==', 'active'));
-            const querySnapshot = await getDocs(q);
-            reports = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        } else {
-            // Get reports from evangelists in the same group
-            const evangelists = await getVisibleEvangelists();
-            const evangelistIds = evangelists.map(e => e.id);
-            
-            if (evangelistIds.length > 0) {
-                // Firebase doesn't support 'in' queries with more than 10 items, so we'll batch them
-                const batches = [];
-                for (let i = 0; i < evangelistIds.length; i += 10) {
-                    const batch = evangelistIds.slice(i, i + 10);
-                    const q = query(
-                        collection(db, 'reports'),
-                        where('evangelistId', 'in', batch),
-                        where('status', '==', 'active')
-                    );
-                    batches.push(getDocs(q));
-                }
-                
-                const batchResults = await Promise.all(batches);
-                reports = batchResults.flatMap(snapshot => 
-                    snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-                );
-            }
-        }
-        
-        return reports;
-        
-    } catch (error) {
-        console.error('Error getting reports:', error);
-        return [];
-    }
-}
-
-async function getActiveGroups() {
-    const { db, collection, query, where, getDocs } = window.firebase;
-    
-    try {
-        const q = query(collection(db, 'groups'), where('status', '==', 'active'));
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } catch (error) {
-        console.error('Error getting groups:', error);
-        return [];
-    }
-}
-
-// Add soul function
-async function addSoul(soulData) {
-    const { db, collection, doc, setDoc, updateDoc } = window.firebase;
-    
-    try {
-        // Create soul document
-        const soulRef = doc(collection(db, 'souls'));
-        const newSoul = {
-            ...soulData,
-            id: soulRef.id,
-            evangelistId: currentUser.id,
-            dateAdded: new Date(),
-            status: 'active',
-            lat: CHURCH_COORDINATES[0] + (Math.random() - 0.5) * 0.02,
-            lng: CHURCH_COORDINATES[1] + (Math.random() - 0.5) * 0.02
-        };
-        
-        await setDoc(soulRef, newSoul);
-        
-        // Update evangelist's souls count
-        const evangelistRef = doc(db, 'evangelists', currentUser.id);
-        await updateDoc(evangelistRef, {
-            soulsWon: (currentUser.soulsWon || 0) + 1
+        // Mettre à jour la dernière connexion
+        await updateDoc(userRef, {
+            lastLogin: serverTimestamp()
         });
         
-        currentUser.soulsWon = (currentUser.soulsWon || 0) + 1;
+        // Définir l'utilisateur actuel
+        currentUser = { id: username, ...userData };
         
-        return { id: soulRef.id, ...newSoul };
+        // Afficher l'application principale
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('mainApp').style.display = 'block';
+        
+        // Charger les données utilisateur
+        loadUserData();
+        showPage('dashboard');
+        
+        showNotification('Connexion réussie! Bienvenue ' + userData.fullName, 'success');
         
     } catch (error) {
-        console.error('Error adding soul:', error);
-        throw error;
+        console.error('Erreur de connexion:', error);
+        showNotification('Erreur de connexion. Veuillez réessayer.', 'error');
+    } finally {
+        showLoading(false);
     }
 }
 
-// Add evangelist function
-async function addEvangelist(evangelistData) {
-    const { db, collection, doc, setDoc } = window.firebase;
-    
+// Déconnexion
+async function handleLogout() {
     try {
-        const evangelistRef = doc(collection(db, 'evangelists'));
-        const newEvangelist = {
-            ...evangelistData,
-            id: evangelistRef.id,
-            permissions: evangelistData.role === 'Évangéliste' ? 'limited' : 'full',
-            status: 'active',
-            soulsWon: 0,
-            lat: CHURCH_COORDINATES[0] + (Math.random() - 0.5) * 0.02,
-            lng: CHURCH_COORDINATES[1] + (Math.random() - 0.5) * 0.02,
-            picture: null,
-            createdAt: new Date()
-        };
+        currentUser = null;
+        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('loginScreen').style.display = 'flex';
         
-        await setDoc(evangelistRef, newEvangelist);
+        // Reset forms
+        document.getElementById('loginForm').reset();
         
-        return { id: evangelistRef.id, ...newEvangelist };
-        
+        showNotification('Déconnexion réussie', 'success');
     } catch (error) {
-        console.error('Error adding evangelist:', error);
-        throw error;
+        console.error('Erreur de déconnexion:', error);
     }
 }
 
-// Add report function
-async function addReport(reportData) {
-    const { db, collection, doc, setDoc } = window.firebase;
-    
-    try {
-        const reportRef = doc(collection(db, 'reports'));
-        const newReport = {
-            ...reportData,
-            id: reportRef.id,
-            evangelistId: currentUser.id,
-            dateCreated: new Date(),
-            status: 'active'
-        };
-        
-        await setDoc(reportRef, newReport);
-        
-        return { id: reportRef.id, ...newReport };
-        
-    } catch (error) {
-        console.error('Error adding report:', error);
-        throw error;
-    }
-}
-
-// Update functions
-async function updateSoul(soulId, soulData) {
-    const { db, doc, updateDoc } = window.firebase;
-    
-    try {
-        const soulRef = doc(db, 'souls', soulId);
-        await updateDoc(soulRef, soulData);
-    } catch (error) {
-        console.error('Error updating soul:', error);
-        throw error;
-    }
-}
-
-async function updateEvangelist(evangelistId, evangelistData) {
-    const { db, doc, updateDoc } = window.firebase;
-    
-    try {
-        const evangelistRef = doc(db, 'evangelists', evangelistId);
-        await updateDoc(evangelistRef, evangelistData);
-    } catch (error) {
-        console.error('Error updating evangelist:', error);
-        throw error;
-    }
-}
-
-// Delete functions (soft delete)
-async function deleteSoul(soulId) {
-    const { db, doc, updateDoc } = window.firebase;
-    
-    try {
-        const soulRef = doc(db, 'souls', soulId);
-        await updateDoc(soulRef, { status: 'deleted' });
-    } catch (error) {
-        console.error('Error deleting soul:', error);
-        throw error;
-    }
-}
-
-async function deleteEvangelist(evangelistId) {
-    const { db, doc, updateDoc } = window.firebase;
-    
-    try {
-        const evangelistRef = doc(db, 'evangelists', evangelistId);
-        await updateDoc(evangelistRef, { status: 'deleted' });
-    } catch (error) {
-        console.error('Error deleting evangelist:', error);
-        throw error;
-    }
-}
-
-// Upload image function
-async function uploadImage(file, path) {
-    const { storage, ref, uploadBytes, getDownloadURL } = window.firebase;
-    
-    try {
-        const imageRef = ref(storage, path);
-        const snapshot = await uploadBytes(imageRef, file);
-        const downloadURL = await getDownloadURL(snapshot.ref);
-        return downloadURL;
-    } catch (error) {
-        console.error('Error uploading image:', error);
-        throw error;
-    }
-}
-
-// Permission helpers
-function canManageEvangelists() {
-    return currentUser && (currentUser.role === 'Coordonnateur' || currentUser.role === 'Adjoint');
-}
-
-function canSeeAllData() {
-    return currentUser && (currentUser.role === 'Coordonnateur' || currentUser.role === 'Adjoint');
-}
-
-function isCoordonnateur() {
-    return currentUser && currentUser.role === 'Coordonnateur';
-}
-
-// UI update functions
-async function updateStats() {
-    try {
-        const [souls, evangelists, reports] = await Promise.all([
-            getVisibleSouls(),
-            getVisibleEvangelists(),
-            getVisibleReports()
-        ]);
-        
-        document.getElementById('totalSouls').textContent = souls.length;
-        document.getElementById('totalEvangelists').textContent = evangelists.filter(e => e.status === 'active').length;
-        document.getElementById('totalReports').textContent = reports.length;
-        
-        // Calculate weekly stats
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-        
-        const weeklySouls = souls.filter(soul => {
-            const soulDate = soul.dateAdded.toDate ? soul.dateAdded.toDate() : new Date(soul.dateAdded);
-            return soulDate >= oneWeekAgo;
-        }).length;
-        
-        document.getElementById('weeklyStats').textContent = weeklySouls;
-        
-    } catch (error) {
-        console.error('Error updating stats:', error);
-    }
-}
-
-async function loadRecentSouls() {
-    try {
-        const souls = await getVisibleSouls();
-        const recentSouls = souls
-            .sort((a, b) => {
-                const dateA = a.dateAdded.toDate ? a.dateAdded.toDate() : new Date(a.dateAdded);
-                const dateB = b.dateAdded.toDate ? b.dateAdded.toDate() : new Date(b.dateAdded);
-                return dateB - dateA;
-            })
-            .slice(0, 5);
-        
-        const container = document.getElementById('recentSoulsList');
-        container.innerHTML = recentSouls.map(soul => {
-            const evangelists = []; // Load evangelists if needed
-            const date = soul.dateAdded.toDate ? soul.dateAdded.toDate() : new Date(soul.dateAdded);
-            
-            return `
-                <div class="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer" onclick="viewSoulDetails('${soul.id}')">
-                    <div class="w-10 h-10 gradient-bg rounded-full flex items-center justify-center">
-                        ${soul.picture ?
-                            `<img src="${soul.picture}" alt="${soul.fullName}" class="w-10 h-10 rounded-full object-cover">` :
-                            `<span class="text-white text-sm font-semibold">${getInitials(soul.fullName)}</span>`
-                        }
-                    </div>
-                    <div class="ml-3 flex-1 min-w-0">
-                        <p class="font-medium text-gray-900 dark:text-white truncate">${soul.fullName}</p>
-                        <p class="text-sm text-gray-600 dark:text-gray-400">${soul.group} • ${date.toLocaleDateString('fr-FR')}</p>
-                    </div>
-                    <div class="ml-2">
-                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                            Nouvelle
-                        </span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        lucide.createIcons();
-        
-    } catch (error) {
-        console.error('Error loading recent souls:', error);
-    }
-}
-
-async function loadRecentReports() {
-    try {
-        const reports = await getVisibleReports();
-        const recentReports = reports
-            .sort((a, b) => {
-                const dateA = a.dateCreated.toDate ? a.dateCreated.toDate() : new Date(a.dateCreated);
-                const dateB = b.dateCreated.toDate ? b.dateCreated.toDate() : new Date(b.dateCreated);
-                return dateB - dateA;
-            })
-            .slice(0, 5);
-        
-        const evangelists = await getVisibleEvangelists();
-        
-        const container = document.getElementById('recentReportsList');
-        container.innerHTML = recentReports.map(report => {
-            const evangelist = evangelists.find(e => e.id === report.evangelistId);
-            const reportDate = report.reportDate instanceof Date ? report.reportDate : new Date(report.reportDate);
-            
-            return `
-                <div class="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer" onclick="viewReportDetails('${report.id}')">
-                    <div class="w-10 h-10 bg-pink-100 dark:bg-pink-900 rounded-full flex items-center justify-center">
-                        <i data-lucide="file-text" class="w-5 h-5 text-pink-600 dark:text-pink-400"></i>
-                    </div>
-                    <div class="ml-3 flex-1 min-w-0">
-                        <p class="font-medium text-gray-900 dark:text-white truncate">${report.location}</p>
-                        <p class="text-sm text-gray-600 dark:text-gray-400">${evangelist ? evangelist.fullName : 'Inconnu'} • ${reportDate.toLocaleDateString('fr-FR')}</p>
-                    </div>
-                    <div class="ml-2">
-                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                            ${report.soulsMetData.length} âme${report.soulsMetData.length > 1 ? 's' : ''}
-                        </span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        lucide.createIcons();
-        
-    } catch (error) {
-        console.error('Error loading recent reports:', error);
-    }
-}
-
-async function loadAnnouncements() {
-    // Placeholder for announcements functionality
-    // This would be implemented similar to other data loading functions
-}
-
-async function loadGroupSelects() {
-    try {
-        const groups = await getActiveGroups();
-        const selects = ['soulGroupSelect', 'evangelistGroupSelect', 'filterGroup', 'filterReportGroup'];
-        
-        selects.forEach(selectId => {
-            const select = document.getElementById(selectId);
-            if (select) {
-                const isFilter = selectId.includes('filter');
-                let options = isFilter ? '<option value="">Tous les groupes</option>' : '<option value="">Sélectionner un groupe</option>';
-                
-                groups.forEach(group => {
-                    options += `<option value="${group.name}">${group.name}</option>`;
-                });
-                
-                if (!isFilter) {
-                    options += '<option value="autre">Autre (nouveau groupe)</option>';
-                }
-                
-                select.innerHTML = options;
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error loading group selects:', error);
-    }
-}
-
-function updatePermissions() {
-    const addEvangelistBtn = document.getElementById('addEvangelistBtn');
-    const manageGroupsBtn = document.getElementById('manageGroupsBtn');
-    const siteSettingsBtn = document.getElementById('siteSettingsBtn');
-    const addDocumentBtn = document.getElementById('addDocumentBtn');
-    
-    if (!canManageEvangelists()) {
-        if (addEvangelistBtn) addEvangelistBtn.style.display = 'none';
-        if (addDocumentBtn) addDocumentBtn.style.display = 'none';
-    } else {
-        if (addEvangelistBtn) addEvangelistBtn.style.display = 'flex';
-        if (addDocumentBtn) addDocumentBtn.style.display = 'flex';
-    }
-    
-    if (!isCoordonnateur()) {
-        if (manageGroupsBtn) manageGroupsBtn.style.display = 'none';
-        if (siteSettingsBtn) siteSettingsBtn.style.display = 'none';
-    } else {
-        if (manageGroupsBtn) manageGroupsBtn.style.display = 'flex';
-        if (siteSettingsBtn) siteSettingsBtn.style.display = 'block';
-    }
-}
-
-// Utility functions
-function getInitials(fullName) {
-    if (!fullName) return '?';
-    const names = fullName.trim().split(' ');
-    return names.map(name => name.charAt(0).toUpperCase()).slice(0, 2).join('');
-}
-
-function updateUserProfileDisplay() {
+// Charger les données utilisateur
+function loadUserData() {
     if (!currentUser) return;
     
-    const initials = getInitials(currentUser.fullName);
+    // Mettre à jour l'interface utilisateur
+    document.getElementById('userName').textContent = currentUser.fullName;
+    document.getElementById('userAvatar').src = currentUser.avatar || 'https://via.placeholder.com/32';
     
-    // Update header profile
-    const headerPicture = document.getElementById('userProfilePicture');
-    const headerInitials = document.getElementById('userInitials');
+    // Charger le profil
+    loadProfile();
     
-    if (currentUser.picture) {
-        headerPicture.src = currentUser.picture;
-        headerPicture.style.display = 'block';
-        headerInitials.style.display = 'none';
+    // Afficher/masquer les sections selon le rôle
+    if (currentUser.role === 'coordinator') {
+        document.getElementById('announcementsSection').style.display = 'block';
+        document.getElementById('addEvangelistBtn').style.display = 'inline-flex';
     } else {
-        headerPicture.style.display = 'none';
-        headerInitials.style.display = 'flex';
-        headerInitials.querySelector('span').textContent = initials;
-    }
-    
-    // Update profile page
-    const profilePicture = document.getElementById('profileImagePreview');
-    const profileInitials = document.getElementById('profileInitialsLarge');
-    
-    if (profilePicture && profileInitials) {
-        if (currentUser.picture) {
-            profilePicture.src = currentUser.picture;
-            profilePicture.style.display = 'block';
-            profileInitials.style.display = 'none';
-        } else {
-            profilePicture.style.display = 'none';
-            profileInitials.style.display = 'flex';
-            profileInitials.querySelector('span').textContent = initials;
+        document.getElementById('announcementsSection').style.display = 'none';
+        if (currentUser.role === 'evangelist') {
+            document.getElementById('addEvangelistBtn').style.display = 'none';
         }
     }
 }
 
-function updateSiteBranding() {
-    // Update login page
-    document.getElementById('loginTitle').textContent = siteSettings.name;
-    document.getElementById('loginSubtitle').textContent = siteSettings.slogan;
-    
-    // Update printable titles
-    document.getElementById('printableTitle').textContent = `${siteSettings.name} - Rapport d'Évangélisation`;
-    
-    // Update logos if present
-    if (siteSettings.logo) {
-        const loginLogo = document.getElementById('loginLogo');
-        const headerLogo = document.getElementById('headerLogo');
-        
-        if (loginLogo) {
-            loginLogo.innerHTML = `<img src="${siteSettings.logo}" alt="${siteSettings.name}" class="w-20 h-20 rounded-full object-cover">`;
-        }
-        if (headerLogo) {
-            headerLogo.innerHTML = `<img src="${siteSettings.logo}" alt="${siteSettings.name}" class="w-10 h-10 rounded-full object-cover">`;
-        }
-    }
-}
-
-// Page navigation
+// Navigation entre les pages
 function showPage(pageId) {
-    const pages = ['dashboardPage', 'soulsPage', 'addSoulPage', 'evangelistsPage', 'addEvangelistPage', 'chatPage', 'profilePage', 'mapPage', 'reportsPage', 'addReportPage', 'libraryPage', 'attendancePage'];
-    pages.forEach(id => {
-        const page = document.getElementById(id);
-        if (page) {
-            page.classList.add('hidden');
-            page.classList.remove('slide-up');
-        }
+    // Masquer toutes les pages
+    document.querySelectorAll('.page-content').forEach(page => {
+        page.style.display = 'none';
     });
     
-    const targetPage = document.getElementById(pageId);
+    // Afficher la page sélectionnée
+    const targetPage = document.getElementById(pageId + 'Page');
     if (targetPage) {
-        targetPage.classList.remove('hidden');
-        targetPage.classList.add('slide-up');
+        targetPage.style.display = 'block';
+        currentPage = pageId;
+        
+        // Mettre à jour le titre
+        updatePageTitle(pageId);
+        
+        // Mettre à jour la navigation active
+        updateActiveNavigation(pageId);
+        
+        // Charger les données de la page
+        loadPageData(pageId);
     }
-    
-    updateNavigation(pageId);
-    updateHeader(pageId);
-    loadPageContent(pageId);
-    
-    currentPage = pageId;
 }
 
-function updateNavigation(activePageId) {
-    const navButtons = document.querySelectorAll('.nav-btn');
-    navButtons.forEach(btn => {
-        const isActive = btn.getAttribute('data-page') === activePageId;
-        if (isActive) {
-            btn.classList.add('text-primary', 'bg-purple-50', 'dark:bg-purple-900/20');
-            btn.classList.remove('text-gray-600', 'dark:text-gray-400');
-        } else {
-            btn.classList.remove('text-primary', 'bg-purple-50', 'dark:bg-purple-900/20');
-            btn.classList.add('text-gray-600', 'dark:text-gray-400');
-        }
-    });
-}
-
-function updateHeader(pageId) {
+// Mettre à jour le titre de la page
+function updatePageTitle(pageId) {
     const titles = {
-        'dashboardPage': 'Dashboard',
-        'soulsPage': 'Âmes gagnées',
-        'addSoulPage': 'Nouvelle âme',
-        'evangelistsPage': 'Équipe',
-        'addEvangelistPage': 'Nouvel évangéliste',
-        'chatPage': `Chat - ${currentUser ? currentUser.group : 'Groupe'}`,
-        'profilePage': 'Mon Profil',
-        'mapPage': 'Carte',
-        'reportsPage': 'Rapports',
-        'addReportPage': 'Nouveau rapport',
-        'libraryPage': 'Bibliothèque',
-        'attendancePage': 'Signaler ma présence'
+        dashboard: 'Tableau de bord',
+        souls: 'Âmes converties',
+        evangelists: 'Évangélistes',
+        reports: 'Rapports',
+        map: 'Carte',
+        chat: 'Chat',
+        library: 'Bibliothèque',
+        attendance: 'Présences',
+        profile: 'Profil'
     };
     
-    document.getElementById('headerTitle').textContent = titles[pageId] || 'Dashboard';
+    document.getElementById('pageTitle').textContent = titles[pageId] || 'CECNE';
 }
 
-async function loadPageContent(pageId) {
-    switch(pageId) {
-        case 'dashboardPage':
-            await loadDashboardData();
-            break;
-        case 'soulsPage':
-            await loadSoulsList();
-            break;
-        case 'evangelistsPage':
-            await loadEvangelistsList();
-            break;
-        case 'reportsPage':
-            await loadReportsList();
-            break;
-        case 'profilePage':
-            loadProfileForm();
-            break;
-        case 'mapPage':
-            if (map) {
-                setTimeout(() => {
-                    map.invalidateSize();
-                    loadMapMarkers();
-                }, 100);
-            } else {
-                setTimeout(() => {
-                    initMap();
-                }, 100);
-            }
-            break;
-    }
-}
-
-// Load lists functions
-async function loadSoulsList() {
-    try {
-        const souls = await getVisibleSouls();
-        const evangelists = await getVisibleEvangelists();
-        
-        const container = document.getElementById('soulsGrid');
-        container.innerHTML = souls.map(soul => {
-            const evangelist = evangelists.find(e => e.id === soul.evangelistId);
-            const date = soul.dateAdded.toDate ? soul.dateAdded.toDate() : new Date(soul.dateAdded);
-            
-            return `
-                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow">
-                    <div class="flex items-start justify-between mb-4">
-                        <div class="flex items-center">
-                            <div class="w-12 h-12 gradient-bg rounded-full flex items-center justify-center">
-                                ${soul.picture ?
-                                    `<img src="${soul.picture}" alt="${soul.fullName}" class="w-12 h-12 rounded-full object-cover">` :
-                                    `<span class="text-white text-lg font-semibold">${getInitials(soul.fullName)}</span>`
-                                }
-                            </div>
-                            <div class="ml-3">
-                                <h3 class="font-semibold text-gray-900 dark:text-white">${soul.fullName}</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">${soul.group}</p>
-                            </div>
-                        </div>
-                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                            Active
-                        </span>
-                    </div>
-                    
-                    <div class="space-y-2 text-sm mb-4">
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="phone" class="w-4 h-4 mr-2"></i>
-                            <a href="tel:${soul.phone}" class="text-blue-600 dark:text-blue-400 hover:underline">${soul.phone}</a>
-                        </div>
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="map-pin" class="w-4 h-4 mr-2"></i>
-                            <span>${soul.address}</span>
-                        </div>
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="calendar" class="w-4 h-4 mr-2"></i>
-                            <span>${date.toLocaleDateString('fr-FR')}</span>
-                        </div>
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="user-check" class="w-4 h-4 mr-2"></i>
-                            <span>Par ${evangelist ? evangelist.fullName : 'Inconnu'}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 mb-4">
-                        <p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-3">${soul.decision || 'Aucune information disponible'}</p>
-                    </div>
-                    
-                    <div class="flex space-x-2 mb-3">
-                        <button onclick="viewSoulDetails('${soul.id}')" class="flex-1 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 text-purple-700 dark:text-purple-400 py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
-                            <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                            Voir rapports
-                        </button>
-                    </div>
-                    
-                    ${canManageEvangelists() || soul.evangelistId === currentUser.id ? `
-                    <div class="flex space-x-2">
-                        <button onclick="editSoul('${soul.id}')" class="flex-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-400 py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
-                            <i data-lucide="edit" class="w-4 h-4 mr-1"></i>
-                            Modifier
-                        </button>
-                        <button onclick="deleteSoulConfirm('${soul.id}')" class="flex-1 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-700 dark:text-red-400 py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
-                            <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                            Supprimer
-                        </button>
-                    </div>
-                    ` : ''}
-                </div>
-            `;
-        }).join('');
-        
-        lucide.createIcons();
-        
-    } catch (error) {
-        console.error('Error loading souls list:', error);
-    }
-}
-
-async function loadEvangelistsList() {
-    try {
-        const evangelists = await getVisibleEvangelists();
-        
-        const container = document.getElementById('evangelistsGrid');
-        container.innerHTML = evangelists.map(evangelist => {
-            const baptismDate = evangelist.baptismDate ? new Date(evangelist.baptismDate).toLocaleDateString('fr-FR') : 'Non renseignée';
-            
-            return `
-                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow">
-                    <div class="flex items-start justify-between mb-4">
-                        <div class="flex items-center">
-                            <div class="w-12 h-12 ${evangelist.status === 'blocked' ? 'bg-red-100 dark:bg-red-900' : 'bg-green-100 dark:bg-green-900'} rounded-full flex items-center justify-center">
-                                ${evangelist.picture ?
-                                    `<img src="${evangelist.picture}" alt="${evangelist.fullName}" class="w-12 h-12 rounded-full object-cover">` :
-                                    `<i data-lucide="${evangelist.status === 'blocked' ? 'user-x' : 'user-check'}" class="w-6 h-6 ${evangelist.status === 'blocked' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}"></i>`
-                                }
-                            </div>
-                            <div class="ml-3">
-                                <h3 class="font-semibold text-gray-900 dark:text-white">${evangelist.fullName}</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">${evangelist.role}</p>
-                            </div>
-                        </div>
-                        <div class="flex flex-col items-end space-y-1">
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                                evangelist.role === 'Coordonnateur' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' :
-                                evangelist.role === 'Adjoint' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
-                                'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                            }">
-                                ${evangelist.role}
-                            </span>
-                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                evangelist.status === 'blocked' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
-                                'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                            }">
-                                ${evangelist.status === 'blocked' ? 'Bloqué' : 'Actif'}
-                            </span>
-                        </div>
-                    </div>
-                    
-                    <div class="space-y-2 text-sm mb-4">
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="phone" class="w-4 h-4 mr-2"></i>
-                            <a href="tel:${evangelist.phone}" class="text-blue-600 dark:text-blue-400 hover:underline">${evangelist.phone}</a>
-                        </div>
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="map-pin" class="w-4 h-4 mr-2"></i>
-                            <span>${evangelist.address}</span>
-                        </div>
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="users" class="w-4 h-4 mr-2"></i>
-                            <span>Groupe ${evangelist.group}</span>
-                        </div>
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="calendar" class="w-4 h-4 mr-2"></i>
-                            <span>Baptême: ${baptismDate}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-lg p-3 mb-4">
-                        <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Âmes gagnées</span>
-                            <span class="text-2xl font-bold text-green-600 dark:text-green-400">${evangelist.soulsWon || 0}</span>
-                        </div>
-                    </div>
-                    
-                    ${canManageEvangelists() ? `
-                    <div class="grid grid-cols-2 gap-2">
-                        <button onclick="editEvangelist('${evangelist.id}')" class="bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-400 py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
-                            <i data-lucide="edit" class="w-4 h-4 mr-1"></i>
-                            Modifier
-                        </button>
-                        <button onclick="deleteEvangelistConfirm('${evangelist.id}')" class="bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-700 dark:text-red-400 py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
-                            <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                            Supprimer
-                        </button>
-                        ${isCoordonnateur() ? `
-                        <button onclick="toggleEvangelistStatus('${evangelist.id}')" class="col-span-2 ${evangelist.status === 'active' ? 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 text-orange-700 dark:text-orange-400' : 'bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/30 text-green-700 dark:text-green-400'} py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
-                            <i data-lucide="${evangelist.status === 'active' ? 'user-x' : 'user-check'}" class="w-4 h-4 mr-1"></i>
-                            ${evangelist.status === 'active' ? 'Bloquer' : 'Débloquer'}
-                        </button>
-                        ` : ''}
-                    </div>
-                    ` : ''}
-                </div>
-            `;
-        }).join('');
-        
-        lucide.createIcons();
-        
-    } catch (error) {
-        console.error('Error loading evangelists list:', error);
-    }
-}
-
-async function loadReportsList() {
-    try {
-        const reports = await getVisibleReports();
-        const evangelists = await getVisibleEvangelists();
-        
-        // Update statistics
-        updateReportStatistics(reports);
-        
-        const container = document.getElementById('reportsGrid');
-        container.innerHTML = reports.map(report => {
-            const evangelist = evangelists.find(e => e.id === report.evangelistId);
-            const reportDate = new Date(report.reportDate).toLocaleDateString('fr-FR');
-            const collaborators = report.collaborators.map(id =>
-                evangelists.find(e => e.id === id)?.fullName || 'Inconnu'
-            ).join(', ');
-            
-            return `
-                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow">
-                    <div class="flex items-start justify-between mb-4">
-                        <div class="flex items-center">
-                            <div class="w-12 h-12 bg-pink-100 dark:bg-pink-900 rounded-full flex items-center justify-center">
-                                <i data-lucide="file-text" class="w-6 h-6 text-pink-600 dark:text-pink-400"></i>
-                            </div>
-                            <div class="ml-3">
-                                <h3 class="font-semibold text-gray-900 dark:text-white">${report.location}</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">${evangelist ? evangelist.fullName : 'Inconnu'}</p>
-                            </div>
-                        </div>
-                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                            ${report.soulsMetData.length} âme${report.soulsMetData.length > 1 ? 's' : ''}
-                        </span>
-                    </div>
-                    
-                    <div class="space-y-2 text-sm mb-4">
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="calendar" class="w-4 h-4 mr-2"></i>
-                            <span>${reportDate}</span>
-                        </div>
-                        <div class="flex items-center text-gray-600 dark:text-gray-400">
-                            <i data-lucide="users" class="w-4 h-4 mr-2"></i>
-                            <span>Collaborateurs: ${collaborators || 'Aucun'}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 mb-4">
-                        <h4 class="font-medium text-gray-900 dark:text-white mb-2">Âmes rencontrées:</h4>
-                        <div class="space-y-1">
-                            ${report.soulsMetData.map(soul => `
-                            <div class="text-sm text-gray-700 dark:text-gray-300 flex items-center justify-between">
-                                <span>• ${soul.soulName} - ${getStatusText(soul.soulStatus)}</span>
-                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                    soul.faithfulnessStatus === 'faithful' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                                    soul.faithfulnessStatus === 'unfaithful' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
-                                    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                }">
-                                    ${soul.faithfulnessStatus === 'faithful' ? 'Fidélisée' : soul.faithfulnessStatus === 'unfaithful' ? 'Non fidélisée' : 'En cours'}
-                                </span>
-                            </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    
-                    ${report.observations ? `
-                    <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-4">
-                        <p class="text-sm text-blue-800 dark:text-blue-300">${report.observations}</p>
-                    </div>
-                    ` : ''}
-                    
-                    <div class="flex space-x-2">
-                        <button onclick="viewReportDetails('${report.id}')" class="flex-1 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 text-purple-700 dark:text-purple-400 py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
-                            <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                            Voir détails
-                        </button>
-                        <button onclick="printReport('${report.id}')" class="flex-1 bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/30 text-green-700 dark:text-green-400 py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
-                            <i data-lucide="printer" class="w-4 h-4 mr-1"></i>
-                            Imprimer
-                        </button>
-                        ${report.evangelistId === currentUser.id || canManageEvangelists() ? `
-                        <button onclick="deleteReportConfirm('${report.id}')" class="bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-700 dark:text-red-400 py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        lucide.createIcons();
-        
-    } catch (error) {
-        console.error('Error loading reports list:', error);
-    }
-}
-
-function updateReportStatistics(reports) {
-    const faithfulSouls = reports.reduce((count, report) => {
-        return count + report.soulsMetData.filter(soul => soul.faithfulnessStatus === 'faithful').length;
-    }, 0);
-    
-    const unfaithfulSouls = reports.reduce((count, report) => {
-        return count + report.soulsMetData.filter(soul => soul.faithfulnessStatus === 'unfaithful').length;
-    }, 0);
-    
-    const totalSoulsInReports = faithfulSouls + unfaithfulSouls;
-    const faithfulnessRate = totalSoulsInReports > 0 ? Math.round((faithfulSouls / totalSoulsInReports) * 100) : 0;
-    
-    document.getElementById('totalOutings').textContent = reports.length;
-    document.getElementById('totalFaithfulSouls').textContent = faithfulSouls;
-    document.getElementById('totalUnfaithfulSouls').textContent = unfaithfulSouls;
-    document.getElementById('faithfulnessRate').textContent = faithfulnessRate + '%';
-}
-
-function getStatusText(status) {
-    const statusMap = {
-        'priere': 'Prière',
-        'exhortation': 'Exhortation',
-        'affermissement': 'Affermissement',
-        'conseil_spirituel': 'Conseil spirituel',
-        'invitation': 'Invitation',
-        'autre': 'Autre'
-    };
-    return statusMap[status] || status;
-}
-
-function loadProfileForm() {
-    const form = document.getElementById('profileForm');
-    const elements = form.elements;
-    
-    elements.fullName.value = currentUser.fullName;
-    elements.username.value = currentUser.username;
-    elements.phone.value = currentUser.phone;
-    elements.role.value = currentUser.role;
-    elements.address.value = currentUser.address;
-    elements.group.value = currentUser.group;
-    elements.baptismDate.value = currentUser.baptismDate || '';
-    
-    updateUserProfileDisplay();
-}
-
-// Initialize map
-function initMap() {
-    map = L.map('map').setView(CHURCH_COORDINATES, 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
-    loadMapMarkers();
-}
-
-async function loadMapMarkers() {
-    if (!map) return;
-    
-    // Clear existing markers
-    map.eachLayer(function (layer) {
-        if (layer instanceof L.Marker) {
-            map.removeLayer(layer);
+// Mettre à jour la navigation active
+function updateActiveNavigation(pageId) {
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.page === pageId) {
+            item.classList.add('active');
         }
     });
-    
-    const evangelistIcon = L.divIcon({
-        className: 'custom-div-icon',
-        html: `<div style="background-color: #10B981; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-        <circle cx="12" cy="7" r="4"/>
-        </svg>
-        </div>`,
-        iconSize: [30, 30],
-        iconAnchor: [15, 15]
-    });
-    
-    const soulIcon = L.divIcon({
-        className: 'custom-div-icon',
-        html: `<div style="background-color: #3B82F6; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-        <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/>
-        </svg>
-        </div>`,
-        iconSize: [30, 30],
-        iconAnchor: [15, 15]
-    });
-    
-    const coordinatorIcon = L.divIcon({
-        className: 'custom-div-icon',
-        html: `<div style="background-color: #8B5CF6; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-        <circle cx="9" cy="7" r="4"/>
-        <polyline points="16,11 18,13 22,9"/>
-        </svg>
-        </div>`,
-        iconSize: [35, 35],
-        iconAnchor: [17.5, 17.5]
-    });
-    
+}
+
+// Charger les données de la page
+async function loadPageData(pageId) {
     try {
-        const [evangelists, souls] = await Promise.all([
-            getVisibleEvangelists(),
-            getVisibleSouls()
+        switch (pageId) {
+            case 'dashboard':
+                await loadDashboardData();
+                break;
+            case 'souls':
+                await loadSoulsData();
+                break;
+            case 'evangelists':
+                await loadEvangelistsData();
+                break;
+            case 'reports':
+                await loadReportsData();
+                break;
+            case 'map':
+                await loadMapData();
+                break;
+            case 'chat':
+                await loadChatData();
+                break;
+            case 'library':
+                await loadLibraryData();
+                break;
+            case 'attendance':
+                await loadAttendanceData();
+                break;
+            case 'profile':
+                await loadProfile();
+                break;
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement des données:', error);
+        showNotification('Erreur lors du chargement des données', 'error');
+    }
+}
+
+// Charger les données du dashboard
+async function loadDashboardData() {
+    try {
+        // Charger les statistiques
+        const [souls, evangelists, reports] = await Promise.all([
+            getDocs(collection(db, 'souls')),
+            getDocs(collection(db, 'users')),
+            getDocs(collection(db, 'reports'))
         ]);
         
-        // Add evangelist markers
-        evangelists.forEach(evangelist => {
-            if (evangelist.lat && evangelist.lng) {
-                const icon = evangelist.role === 'Coordonnateur' ? coordinatorIcon : evangelistIcon;
-                const marker = L.marker([evangelist.lat, evangelist.lng], { icon: icon }).addTo(map);
-                
-                marker.bindPopup(`
-                    <div class="p-2">
-                        <h3 class="font-semibold text-lg">${evangelist.fullName}</h3>
+        // Calculer les statistiques
+        const totalSouls = souls.size;
+        const totalEvangelists = evangelists.docs.filter(doc => 
+            doc.data().role !== 'coordinator'
+        ).length;
+        const totalReports = reports.size;
+        
+        // Ce mois
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+        const thisMonthSouls = souls.docs.filter(doc => {
+            const createdAt = doc.data().createdAt?.toDate();
+            return createdAt && 
+                   createdAt.getMonth() === currentMonth && 
+                   createdAt.getFullYear() === currentYear;
+        }).length;
+        
+        // Mettre à jour l'interface
+        document.getElementById('totalSouls').textContent = totalSouls;
+        document.getElementById('totalEvangelists').textContent = totalEvangelists;
+        document.getElementById('totalReports').textContent = totalReports;
+        document.getElementById('thisMonthSouls').textContent = thisMonthSouls;
+        
+        // Charger les activités récentes
+        await loadRecentActivities();
+        
+        // Charger les annonces pour les coordinateurs
+        if (currentUser.role === 'coordinator') {
+            await loadAnnouncements();
+        }
+        
+    } catch (error) {
+        console.error('Erreur dashboard:', error);
+    }
+}
+
+// Charger les activités récentes
+async function loadRecentActivities() {
+    try {
+        const activitiesContainer = document.getElementById('recentActivities');
+        if (!activitiesContainer) return;
+        
+        activitiesContainer.innerHTML = '<p class="text-gray-500">Chargement des activités...</p>';
+        
+        // Simuler des activités récentes
+        const activities = [
+            { type: 'soul', text: 'Nouvelle âme convertie: Marie Kalala', time: '2 heures' },
+            { type: 'report', text: 'Rapport d\'évangélisation soumis', time: '5 heures' },
+            { type: 'evangelist', text: 'Nouvel évangéliste ajouté', time: '1 jour' }
+        ];
+        
+        activitiesContainer.innerHTML = activities.map(activity => `
+            <div class="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
+                <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <i class="fas fa-${activity.type === 'soul' ? 'user' : activity.type === 'report' ? 'file-alt' : 'user-plus'} text-blue-600 text-sm"></i>
+                </div>
+                <div class="flex-1">
+                    <p class="text-sm text-gray-800">${activity.text}</p>
+                    <p class="text-xs text-gray-500">Il y a ${activity.time}</p>
+                </div>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Erreur activités récentes:', error);
+    }
+}
+
+// Charger les âmes
+async function loadSoulsData() {
+    try {
+        const soulsQuery = query(collection(db, 'souls'), orderBy('createdAt', 'desc'));
+        const soulsSnapshot = await getDocs(soulsQuery);
+        
+        const tbody = document.getElementById('soulsTableBody');
+        if (!tbody) return;
+        
+        tbody.innerHTML = '';
+        
+        soulsSnapshot.forEach(doc => {
+            const soul = doc.data();
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="px-6 py-4">
+                    <img src="${soul.photo || 'https://via.placeholder.com/40'}" 
+                         alt="${soul.name}" 
+                         class="w-10 h-10 rounded-full object-cover">
+                </td>
+                <td class="px-6 py-4 font-medium text-gray-900">${soul.name}</td>
+                <td class="px-6 py-4 text-gray-600">${soul.phone || '-'}</td>
+                <td class="px-6 py-4 text-gray-600">${soul.group}</td>
+                <td class="px-6 py-4 text-gray-600">${soul.evangelist}</td>
+                <td class="px-6 py-4 text-gray-600">${formatDate(soul.createdAt)}</td>
+                <td class="px-6 py-4">
+                    <div class="flex space-x-2">
+                        <button onclick="editSoul('${doc.id}')" class="text-blue-600 hover:text-blue-800">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="deleteSoul('${doc.id}')" class="text-red-600 hover:text-red-800">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        // Charger les groupes pour le filtre
+        await loadGroupsForFilter('filterSoulsGroup');
+        
+    } catch (error) {
+        console.error('Erreur chargement âmes:', error);
+    }
+}
+
+// Charger les évangélistes
+async function loadEvangelistsData() {
+    try {
+        const evangelistsQuery = query(collection(db, 'users'), where('role', '!=', 'coordinator'));
+        const evangelistsSnapshot = await getDocs(evangelistsQuery);
+        
+        const grid = document.getElementById('evangelistsGrid');
+        if (!grid) return;
+        
+        grid.innerHTML = '';
+        
+        evangelistsSnapshot.forEach(doc => {
+            const evangelist = doc.data();
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-lg shadow p-6 card-hover';
+            card.innerHTML = `
+                <div class="flex items-center space-x-4 mb-4">
+                    <img src="${evangelist.avatar || 'https://via.placeholder.com/60'}" 
+                         alt="${evangelist.fullName}" 
+                         class="w-15 h-15 rounded-full object-cover">
+                    <div>
+                        <h3 class="font-semibold text-gray-900">${evangelist.fullName}</h3>
                         <p class="text-sm text-gray-600">${evangelist.role}</p>
-                        <p class="text-sm">${evangelist.group}</p>
-                        <p class="text-sm font-medium text-green-600">${evangelist.soulsWon || 0} âmes gagnées</p>
-                        <p class="text-xs text-gray-500"><a href="tel:${evangelist.phone}" class="text-blue-600 hover:underline">${evangelist.phone}</a></p>
+                        <p class="text-sm text-gray-500">${evangelist.group}</p>
                     </div>
-                `);
-            }
-        });
-        
-        // Add soul markers
-        souls.forEach(soul => {
-            if (soul.lat && soul.lng) {
-                const marker = L.marker([soul.lat, soul.lng], { icon: soulIcon }).addTo(map);
-                
-                const evangelist = evangelists.find(e => e.id === soul.evangelistId);
-                marker.bindPopup(`
-                    <div class="p-2">
-                        <h3 class="font-semibold text-lg">${soul.fullName}</h3>
-                        <p class="text-sm text-gray-600"><a href="tel:${soul.phone}" class="text-blue-600 hover:underline">${soul.phone}</a></p>
-                        <p class="text-sm">${soul.address}</p>
-                        <p class="text-sm text-blue-600">${soul.group}</p>
-                        <p class="text-xs text-gray-500">Par ${evangelist ? evangelist.fullName : 'Inconnu'}</p>
-                    </div>
-                `);
-            }
+                </div>
+                <div class="space-y-2 text-sm">
+                    <p><i class="fas fa-phone w-4"></i> ${evangelist.phone}</p>
+                    <p><i class="fas fa-map-marker-alt w-4"></i> ${evangelist.address}</p>
+                </div>
+                <div class="mt-4 flex space-x-2">
+                    <button onclick="editEvangelist('${doc.id}')" class="flex-1 bg-blue-500 text-white px-3 py-2 rounded text-sm hover:bg-blue-600">
+                        Modifier
+                    </button>
+                    ${currentUser.role === 'coordinator' ? `
+                    <button onclick="deleteEvangelist('${doc.id}')" class="flex-1 bg-red-500 text-white px-3 py-2 rounded text-sm hover:bg-red-600">
+                        Supprimer
+                    </button>
+                    ` : ''}
+                </div>
+            `;
+            grid.appendChild(card);
         });
         
     } catch (error) {
-        console.error('Error loading map markers:', error);
+        console.error('Erreur chargement évangélistes:', error);
     }
 }
 
-// Charts initialization
-function initializeCharts() {
-    if (!isCoordonnateur()) return;
-    
-    // This would be implemented with actual chart data
-    // For now, it's a placeholder
-}
-
-// Form event listeners
-document.getElementById('loginForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const loginButton = document.getElementById('loginButton');
-    const originalText = loginButton.textContent;
-    
+// Charger les rapports
+async function loadReportsData() {
     try {
-        loginButton.textContent = 'Connexion...';
-        loginButton.disabled = true;
+        const reportsQuery = query(collection(db, 'reports'), orderBy('date', 'desc'));
+        const reportsSnapshot = await getDocs(reportsQuery);
         
-        const username = document.getElementById('username').value.trim();
-        const password = document.getElementById('password').value.trim();
+        const container = document.getElementById('reportsList');
+        if (!container) return;
         
-        await loginUser(username, password);
+        container.innerHTML = '';
+        
+        reportsSnapshot.forEach(doc => {
+            const report = doc.data();
+            const item = document.createElement('div');
+            item.className = 'p-6 hover:bg-gray-50';
+            item.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-gray-900">${report.location}</h3>
+                        <p class="text-sm text-gray-600">Par ${report.evangelist} • ${formatDate(report.date)}</p>
+                        <p class="text-sm text-gray-500 mt-2">${report.description.substring(0, 100)}...</p>
+                        <div class="flex space-x-4 mt-2 text-xs text-gray-500">
+                            <span>Conversions: ${report.newConversions || 0}</span>
+                            <span>Suivis: ${report.followUps || 0}</span>
+                            <span>Bibles: ${report.biblesDistributed || 0}</span>
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="viewReport('${doc.id}')" class="text-blue-600 hover:text-blue-800">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button onclick="editReport('${doc.id}')" class="text-green-600 hover:text-green-800">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="deleteReport('${doc.id}')" class="text-red-600 hover:text-red-800">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(item);
+        });
         
     } catch (error) {
-        console.error('Login failed:', error);
-        showNotification(error.message || 'Erreur de connexion', 'error');
-    } finally {
-        loginButton.textContent = originalText;
-        loginButton.disabled = false;
+        console.error('Erreur chargement rapports:', error);
     }
-});
+}
 
-document.getElementById('logoutBtn').addEventListener('click', function() {
-    currentUser = null;
-    document.getElementById('loginScreen').classList.remove('hidden');
-    document.getElementById('mainApp').classList.add('hidden');
-    document.getElementById('loginForm').reset();
-});
-
-// Soul form submission
-document.getElementById('soulForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
+// Charger les données de la carte
+async function loadMapData() {
     try {
-        const formData = new FormData(e.target);
-        let group = formData.get('group');
-        
-        if (group === 'autre') {
-            const newGroupName = prompt('Entrez le nom du nouveau groupe:');
-            if (!newGroupName) return;
-            
-            // Create new group
-            const { db, collection, doc, setDoc } = window.firebase;
-            const groupRef = doc(collection(db, 'groups'));
-            await setDoc(groupRef, {
-                id: groupRef.id,
-                name: newGroupName,
-                createdBy: currentUser.id,
-                status: 'active',
-                createdAt: new Date()
-            });
-            
-            group = newGroupName;
-            await loadGroupSelects();
-        }
-        
-        // Handle profile picture
-        let soulPicture = null;
-        const soulImagePreview = document.getElementById('soulImagePreview');
-        if (soulImagePreview && soulImagePreview.src && soulImagePreview.style.display !== 'none') {
-            // Upload image to Firebase Storage
-            const file = document.getElementById('soulPicture').files[0];
-            if (file) {
-                const imagePath = `souls/${Date.now()}_${file.name}`;
-                soulPicture = await uploadImage(file, imagePath);
-            }
-        }
-        
-        const soulData = {
-            fullName: formData.get('fullName'),
-            phone: formData.get('phone'),
-            address: formData.get('address'),
-            group: group,
-            decision: formData.get('decision'),
-            picture: soulPicture
+        // Simuler des données de localisation
+        const evangelistsByCommune = {
+            'Gombe': 5,
+            'Kalamu': 8,
+            'Centre-ville': 12,
+            'Kinshasa': 6,
+            'Ngiri-Ngiri': 4
         };
         
-        await addSoul(soulData);
+        const soulsByCommune = {
+            'Gombe': 15,
+            'Kalamu': 28,
+            'Centre-ville': 35,
+            'Kinshasa': 22,
+            'Ngiri-Ngiri': 18
+        };
         
-        e.target.reset();
-        // Reset image preview
-        document.getElementById('soulImagePreview').style.display = 'none';
-        document.getElementById('soulInitialsPreview').style.display = 'flex';
-        document.getElementById('soulInitialsPreview').querySelector('span').textContent = '👤';
+        // Afficher les statistiques par commune
+        const evangelistsContainer = document.getElementById('evangelistsByCommune');
+        const soulsContainer = document.getElementById('soulsByCommune');
         
-        showPage('soulsPage');
-        showNotification('Âme ajoutée avec succès !', 'success');
+        if (evangelistsContainer) {
+            evangelistsContainer.innerHTML = Object.entries(evangelistsByCommune)
+                .map(([commune, count]) => `
+                    <div class="flex justify-between">
+                        <span>${commune}</span>
+                        <span class="font-semibold">${count}</span>
+                    </div>
+                `).join('');
+        }
+        
+        if (soulsContainer) {
+            soulsContainer.innerHTML = Object.entries(soulsByCommune)
+                .map(([commune, count]) => `
+                    <div class="flex justify-between">
+                        <span>${commune}</span>
+                        <span class="font-semibold">${count}</span>
+                    </div>
+                `).join('');
+        }
         
     } catch (error) {
-        console.error('Error adding soul:', error);
-        showNotification('Erreur lors de l\'ajout de l\'âme', 'error');
+        console.error('Erreur chargement carte:', error);
     }
-});
+}
 
-// Evangelist form submission
-document.getElementById('evangelistForm').addEventListener('submit', async function(e) {
+// Charger les données du chat
+async function loadChatData() {
+    try {
+        const groups = await getDocs(collection(db, 'groups'));
+        const chatGroupsContainer = document.getElementById('chatGroups');
+        
+        if (!chatGroupsContainer) return;
+        
+        chatGroupsContainer.innerHTML = '';
+        
+        groups.forEach(doc => {
+            const group = doc.data();
+            const groupElement = document.createElement('div');
+            groupElement.className = 'p-4 hover:bg-gray-50 cursor-pointer border-b';
+            groupElement.innerHTML = `
+                <h4 class="font-medium">${group.name}</h4>
+                <p class="text-sm text-gray-500">${group.description}</p>
+            `;
+            groupElement.onclick = () => loadChatMessages(doc.id, group.name);
+            chatGroupsContainer.appendChild(groupElement);
+        });
+        
+    } catch (error) {
+        console.error('Erreur chargement chat:', error);
+    }
+}
+
+// Charger les messages du chat
+async function loadChatMessages(groupId, groupName) {
+    try {
+        document.getElementById('activeChatGroup').textContent = groupName;
+        const messagesContainer = document.getElementById('chatMessages');
+        
+        if (!messagesContainer) return;
+        
+        // Simuler des messages
+        const messages = [
+            { sender: 'Jean Mukendi', message: 'Bonjour tout le monde!', time: '10:30', isSent: false },
+            { sender: 'Moi', message: 'Salut! Comment ça va?', time: '10:32', isSent: true },
+            { sender: 'Marie Kalala', message: 'Très bien, merci!', time: '10:35', isSent: false }
+        ];
+        
+        messagesContainer.innerHTML = messages.map(msg => `
+            <div class="chat-bubble ${msg.isSent ? 'sent' : 'received'} p-3 rounded-lg">
+                ${!msg.isSent ? `<p class="text-xs font-medium mb-1">${msg.sender}</p>` : ''}
+                <p>${msg.message}</p>
+                <p class="text-xs opacity-70 mt-1">${msg.time}</p>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Erreur chargement messages:', error);
+    }
+}
+
+// Envoyer un message
+async function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    try {
+        // Ajouter le message à la liste
+        const messagesContainer = document.getElementById('chatMessages');
+        const messageElement = document.createElement('div');
+        messageElement.className = 'chat-bubble sent p-3 rounded-lg';
+        messageElement.innerHTML = `
+            <p>${message}</p>
+            <p class="text-xs opacity-70 mt-1">${new Date().toLocaleTimeString()}</p>
+        `;
+        messagesContainer.appendChild(messageElement);
+        
+        // Vider l'input
+        input.value = '';
+        
+        // Scroll vers le bas
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        
+    } catch (error) {
+        console.error('Erreur envoi message:', error);
+    }
+}
+
+// Charger les données de la bibliothèque
+async function loadLibraryData() {
+    try {
+        const documentsQuery = query(collection(db, 'documents'), orderBy('createdAt', 'desc'));
+        const documentsSnapshot = await getDocs(documentsQuery);
+        
+        const container = document.getElementById('documentsList');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        if (documentsSnapshot.empty) {
+            container.innerHTML = `
+                <div class="col-span-full text-center py-8">
+                    <i class="fas fa-book text-4xl text-gray-300 mb-4"></i>
+                    <p class="text-gray-500">Aucun document disponible</p>
+                </div>
+            `;
+            return;
+        }
+        
+        documentsSnapshot.forEach(doc => {
+            const document_data = doc.data();
+            const card = document.createElement('div');
+            card.className = 'file-item p-4 border rounded-lg';
+            card.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-file-pdf text-red-500 text-2xl"></i>
+                    <div class="flex-1">
+                        <h4 class="font-medium">${document_data.name}</h4>
+                        <p class="text-sm text-gray-500">${document_data.description || 'Aucune description'}</p>
+                        <p class="text-xs text-gray-400">${formatDate(document_data.createdAt)}</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="downloadDocument('${document_data.url}')" class="text-blue-600 hover:text-blue-800">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button onclick="deleteDocument('${doc.id}')" class="text-red-600 hover:text-red-800">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+        
+    } catch (error) {
+        console.error('Erreur chargement bibliothèque:', error);
+    }
+}
+
+// Charger les données de présence
+async function loadAttendanceData() {
+    try {
+        // Charger les présences d'aujourd'hui
+        const today = new Date().toISOString().split('T')[0];
+        const todayContainer = document.getElementById('todayAttendance');
+        
+        if (todayContainer) {
+            todayContainer.innerHTML = `
+                <div class="text-center py-4">
+                    <p class="text-gray-500">Aucune donnée de présence pour aujourd'hui</p>
+                </div>
+            `;
+        }
+        
+        // Charger les statistiques
+        const statsContainer = document.getElementById('attendanceStats');
+        if (statsContainer) {
+            statsContainer.innerHTML = `
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span>Présences cette semaine</span>
+                        <span class="font-semibold">85%</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Présences ce mois</span>
+                        <span class="font-semibold">78%</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Évangélistes actifs</span>
+                        <span class="font-semibold">12/15</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+    } catch (error) {
+        console.error('Erreur chargement présences:', error);
+    }
+}
+
+// Charger le profil
+async function loadProfile() {
+    if (!currentUser) return;
+    
+    try {
+        // Mettre à jour les champs du profil
+        document.getElementById('profileName').textContent = currentUser.fullName;
+        document.getElementById('profileRole').textContent = currentUser.role;
+        document.getElementById('profileAvatar').src = currentUser.avatar || 'https://via.placeholder.com/120';
+        
+        document.getElementById('profileFullName').value = currentUser.fullName || '';
+        document.getElementById('profileUsername').value = currentUser.username || '';
+        document.getElementById('profileEmail').value = currentUser.email || '';
+        document.getElementById('profilePhone').value = currentUser.phone || '';
+        document.getElementById('profileAddress').value = currentUser.address || '';
+        
+        // Charger les groupes
+        await loadGroupsForSelect('profileGroup');
+        document.getElementById('profileGroup').value = currentUser.group || '';
+        
+    } catch (error) {
+        console.error('Erreur chargement profil:', error);
+    }
+}
+
+// Actions rapides
+function handleQuickAction(action) {
+    switch (action) {
+        case 'add-soul':
+            openSoulModal();
+            break;
+        case 'add-evangelist':
+            if (currentUser.role === 'coordinator') {
+                openEvangelistModal();
+            } else {
+                showNotification('Action non autorisée', 'error');
+            }
+            break;
+        case 'add-report':
+            openReportModal();
+            break;
+        case 'view-map':
+            showPage('map');
+            break;
+    }
+}
+
+// Modales
+function openSoulModal(soulId = null) {
+    document.getElementById('soulModal').classList.remove('hidden');
+    document.getElementById('soulModalTitle').textContent = soulId ? 'Modifier l\'âme' : 'Nouvelle âme convertie';
+    
+    if (!soulId) {
+        document.getElementById('soulForm').reset();
+    }
+    
+    // Charger les groupes et évangélistes
+    loadGroupsForSelect('soulGroup');
+    loadEvangelistsForSelect('soulEvangelist');
+}
+
+function openEvangelistModal(evangelistId = null) {
+    document.getElementById('evangelistModal').classList.remove('hidden');
+    document.getElementById('evangelistModalTitle').textContent = evangelistId ? 'Modifier l\'évangéliste' : 'Nouvel évangéliste';
+    
+    if (!evangelistId) {
+        document.getElementById('evangelistForm').reset();
+    }
+    
+    // Charger les groupes
+    loadGroupsForSelect('evangelistGroup');
+}
+
+function openReportModal(reportId = null) {
+    document.getElementById('reportModal').classList.remove('hidden');
+    document.getElementById('reportModalTitle').textContent = reportId ? 'Modifier le rapport' : 'Nouveau rapport d\'évangélisation';
+    
+    if (!reportId) {
+        document.getElementById('reportForm').reset();
+        document.getElementById('reportDate').value = new Date().toISOString().split('T')[0];
+    }
+    
+    // Charger les évangélistes et âmes
+    loadEvangelistsForSelect('reportEvangelist');
+    loadSoulsForReport();
+}
+
+function openDocumentModal() {
+    document.getElementById('documentModal').classList.remove('hidden');
+    document.getElementById('documentForm').reset();
+}
+
+function openAttendanceModal() {
+    document.getElementById('attendanceModal').classList.remove('hidden');
+    document.getElementById('attendanceDate').value = new Date().toISOString().split('T')[0];
+    loadEvangelistsForAttendance();
+}
+
+function openAnnouncementModal() {
+    if (currentUser.role !== 'coordinator') {
+        showNotification('Action non autorisée', 'error');
+        return;
+    }
+    document.getElementById('announcementModal').classList.remove('hidden');
+    document.getElementById('announcementForm').reset();
+}
+
+function closeModals() {
+    document.querySelectorAll('[id$="Modal"]').forEach(modal => {
+        modal.classList.add('hidden');
+    });
+}
+
+// Soumissions de formulaires
+async function handleSoulSubmit(e) {
     e.preventDefault();
     
-    if (!canManageEvangelists()) {
-        alert('Vous n\'avez pas les permissions pour ajouter des évangélistes');
+    try {
+        showLoading(true);
+        
+        const formData = new FormData(e.target);
+        const soulData = {
+            name: formData.get('name') || document.getElementById('soulName').value,
+            phone: formData.get('phone') || document.getElementById('soulPhone').value,
+            address: formData.get('address') || document.getElementById('soulAddress').value,
+            group: formData.get('group') || document.getElementById('soulGroup').value,
+            evangelist: formData.get('evangelist') || document.getElementById('soulEvangelist').value,
+            notes: formData.get('notes') || document.getElementById('soulNotes').value,
+            createdAt: serverTimestamp(),
+            createdBy: currentUser.username
+        };
+        
+        // Upload photo si présente
+        const photoFile = document.getElementById('soulPhoto').files[0];
+        if (photoFile) {
+            const photoRef = ref(storage, `souls/${Date.now()}_${photoFile.name}`);
+            const photoSnapshot = await uploadBytes(photoRef, photoFile);
+            soulData.photo = await getDownloadURL(photoSnapshot.ref);
+        }
+        
+        // Ajouter à Firestore
+        await addDoc(collection(db, 'souls'), soulData);
+        
+        closeModals();
+        showNotification('Âme ajoutée avec succès!', 'success');
+        
+        // Recharger les données si on est sur la page des âmes
+        if (currentPage === 'souls') {
+            await loadSoulsData();
+        }
+        
+    } catch (error) {
+        console.error('Erreur ajout âme:', error);
+        showNotification('Erreur lors de l\'ajout de l\'âme', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function handleEvangelistSubmit(e) {
+    e.preventDefault();
+    
+    if (currentUser.role !== 'coordinator') {
+        showNotification('Action non autorisée', 'error');
         return;
     }
     
     try {
+        showLoading(true);
+        
         const formData = new FormData(e.target);
+        const username = formData.get('username') || document.getElementById('evangelistUsername').value;
         
-        // Check if username already exists
-        const { db, collection, query, where, getDocs } = window.firebase;
-        const q = query(
-            collection(db, 'evangelists'),
-            where('username', '==', formData.get('username'))
-        );
-        const existingUser = await getDocs(q);
+        // Vérifier si l'utilisateur existe déjà
+        const userRef = doc(db, 'users', username);
+        const userDoc = await getDoc(userRef);
         
-        if (!existingUser.empty) {
-            alert('Ce nom d\'utilisateur existe déjà');
+        if (userDoc.exists()) {
+            showNotification('Ce nom d\'utilisateur existe déjà', 'error');
             return;
         }
         
-        let group = formData.get('group');
-        
-        if (group === 'autre') {
-            const newGroupName = prompt('Entrez le nom du nouveau groupe:');
-            if (!newGroupName) return;
-            
-            // Create new group
-            const groupRef = doc(collection(db, 'groups'));
-            await setDoc(groupRef, {
-                id: groupRef.id,
-                name: newGroupName,
-                createdBy: currentUser.id,
-                status: 'active',
-                createdAt: new Date()
-            });
-            
-            group = newGroupName;
-            await loadGroupSelects();
-        }
-        
         const evangelistData = {
-            fullName: formData.get('fullName'),
-            username: formData.get('username'),
-            phone: formData.get('phone'),
-            role: formData.get('role'),
-            address: formData.get('address'),
-            group: group,
-            baptismDate: formData.get('baptismDate'),
-            password: formData.get('username') // Default password is username
+            username: username,
+            password: formData.get('password') || document.getElementById('evangelistPassword').value,
+            fullName: formData.get('fullName') || document.getElementById('evangelistName').value,
+            phone: formData.get('phone') || document.getElementById('evangelistPhone').value,
+            email: formData.get('email') || document.getElementById('evangelistEmail').value,
+            role: formData.get('role') || document.getElementById('evangelistRole').value,
+            group: formData.get('group') || document.getElementById('evangelistGroup').value,
+            address: formData.get('address') || document.getElementById('evangelistAddress').value,
+            createdAt: serverTimestamp(),
+            createdBy: currentUser.username
         };
         
-        await addEvangelist(evangelistData);
+        // Upload photo si présente
+        const photoFile = document.getElementById('evangelistPhoto').files[0];
+        if (photoFile) {
+            const photoRef = ref(storage, `evangelists/${Date.now()}_${photoFile.name}`);
+            const photoSnapshot = await uploadBytes(photoRef, photoFile);
+            evangelistData.avatar = await getDownloadURL(photoSnapshot.ref);
+        }
         
-        e.target.reset();
-        showPage('evangelistsPage');
-        showNotification('Évangéliste ajouté avec succès !', 'success');
+        // Ajouter à Firestore
+        await setDoc(userRef, evangelistData);
+        
+        closeModals();
+        showNotification('Évangéliste ajouté avec succès!', 'success');
+        
+        // Recharger les données si on est sur la page des évangélistes
+        if (currentPage === 'evangelists') {
+            await loadEvangelistsData();
+        }
         
     } catch (error) {
-        console.error('Error adding evangelist:', error);
+        console.error('Erreur ajout évangéliste:', error);
         showNotification('Erreur lors de l\'ajout de l\'évangéliste', 'error');
+    } finally {
+        showLoading(false);
     }
-});
+}
 
-// Report form submission
-document.getElementById('reportForm').addEventListener('submit', async function(e) {
+async function handleReportSubmit(e) {
     e.preventDefault();
     
     try {
-        const formData = new FormData(e.target);
+        showLoading(true);
         
-        const collaborators = [];
-        const collaboratorInputs = document.querySelectorAll('input[name="collaborators[]"]:checked');
-        collaboratorInputs.forEach(input => {
-            collaborators.push(input.value);
+        const formData = new FormData(e.target);
+        const reportData = {
+            date: formData.get('date') || document.getElementById('reportDate').value,
+            location: formData.get('location') || document.getElementById('reportLocation').value,
+            evangelist: formData.get('evangelist') || document.getElementById('reportEvangelist').value,
+            newConversions: parseInt(formData.get('newConversions') || document.getElementById('reportNewConversions').value) || 0,
+            followUps: parseInt(formData.get('followUps') || document.getElementById('reportFollowUps').value) || 0,
+            biblesDistributed: parseInt(formData.get('biblesDistributed') || document.getElementById('reportBiblesDistributed').value) || 0,
+            description: formData.get('description') || document.getElementById('reportDescription').value,
+            challenges: formData.get('challenges') || document.getElementById('reportChallenges').value,
+            testimonies: formData.get('testimonies') || document.getElementById('reportTestimonies').value,
+            createdAt: serverTimestamp(),
+            createdBy: currentUser.username
+        };
+        
+        // Récupérer les âmes sélectionnées
+        const selectedSouls = [];
+        document.querySelectorAll('#reportSouls input[type="checkbox"]:checked').forEach(checkbox => {
+            selectedSouls.push(checkbox.value);
+        });
+        reportData.soulsEncountered = selectedSouls;
+        
+        // Ajouter à Firestore
+        await addDoc(collection(db, 'reports'), reportData);
+        
+        closeModals();
+        showNotification('Rapport ajouté avec succès!', 'success');
+        
+        // Recharger les données si on est sur la page des rapports
+        if (currentPage === 'reports') {
+            await loadReportsData();
+        }
+        
+    } catch (error) {
+        console.error('Erreur ajout rapport:', error);
+        showNotification('Erreur lors de l\'ajout du rapport', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function handleDocumentSubmit(e) {
+    e.preventDefault();
+    
+    try {
+        showLoading(true);
+        
+        const formData = new FormData(e.target);
+        const file = document.getElementById('documentFile').files[0];
+        
+        if (!file) {
+            showNotification('Veuillez sélectionner un fichier', 'error');
+            return;
+        }
+        
+        // Upload du fichier
+        const fileRef = ref(storage, `documents/${Date.now()}_${file.name}`);
+        const fileSnapshot = await uploadBytes(fileRef, file);
+        const fileUrl = await getDownloadURL(fileSnapshot.ref);
+        
+        const documentData = {
+            name: formData.get('name') || document.getElementById('documentName').value,
+            description: formData.get('description') || document.getElementById('documentDescription').value,
+            url: fileUrl,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            createdAt: serverTimestamp(),
+            createdBy: currentUser.username
+        };
+        
+        // Ajouter à Firestore
+        await addDoc(collection(db, 'documents'), documentData);
+        
+        closeModals();
+        showNotification('Document ajouté avec succès!', 'success');
+        
+        // Recharger les données si on est sur la page de la bibliothèque
+        if (currentPage === 'library') {
+            await loadLibraryData();
+        }
+        
+    } catch (error) {
+        console.error('Erreur ajout document:', error);
+        showNotification('Erreur lors de l\'ajout du document', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function handleAttendanceSubmit(e) {
+    e.preventDefault();
+    
+    try {
+        showLoading(true);
+        
+        const date = document.getElementById('attendanceDate').value;
+        const presentEvangelists = [];
+        
+        document.querySelectorAll('#attendanceList input[type="checkbox"]:checked').forEach(checkbox => {
+            presentEvangelists.push(checkbox.value);
         });
         
-        const soulNames = formData.getAll('soulName[]');
-        const soulPhones = formData.getAll('soulPhone[]');
-        const discussionContents = formData.getAll('discussionContent[]');
-        const soulStatuses = formData.getAll('soulStatus[]');
-        const faithfulnessStatuses = formData.getAll('faithfulnessStatus[]');
-        const versesUsed = formData.getAll('verseUsed[]');
-        const strengtheningTitles = formData.getAll('strengtheningTitle[]');
-        
-        const soulsMetData = soulNames.map((name, index) => ({
-            soulId: null,
-            soulName: name,
-            soulPhone: soulPhones[index] || '',
-            discussionContent: discussionContents[index],
-            soulStatus: soulStatuses[index],
-            faithfulnessStatus: faithfulnessStatuses[index],
-            verseUsed: versesUsed[index] || '',
-            strengtheningTitle: strengtheningTitles[index] || ''
-        }));
-        
-        const reportData = {
-            reportDate: formData.get('reportDate'),
-            location: formData.get('location'),
-            collaborators: collaborators,
-            soulsMetData: soulsMetData,
-            observations: formData.get('observations')
+        const attendanceData = {
+            date: date,
+            presentEvangelists: presentEvangelists,
+            createdAt: serverTimestamp(),
+            createdBy: currentUser.username
         };
         
-        await addReport(reportData);
+        // Ajouter à Firestore
+        await addDoc(collection(db, 'attendance'), attendanceData);
         
-        e.target.reset();
-        showPage('reportsPage');
-        showNotification('Rapport enregistré avec succès !', 'success');
+        closeModals();
+        showNotification('Présences enregistrées avec succès!', 'success');
+        
+        // Recharger les données si on est sur la page des présences
+        if (currentPage === 'attendance') {
+            await loadAttendanceData();
+        }
         
     } catch (error) {
-        console.error('Error adding report:', error);
-        showNotification('Erreur lors de l\'enregistrement du rapport', 'error');
+        console.error('Erreur enregistrement présences:', error);
+        showNotification('Erreur lors de l\'enregistrement des présences', 'error');
+    } finally {
+        showLoading(false);
     }
-});
+}
 
-// Profile form submission
-document.getElementById('profileForm').addEventListener('submit', async function(e) {
+async function handleAnnouncementSubmit(e) {
+    e.preventDefault();
+    
+    if (currentUser.role !== 'coordinator') {
+        showNotification('Action non autorisée', 'error');
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        
+        const formData = new FormData(e.target);
+        const announcementData = {
+            title: formData.get('title') || document.getElementById('announcementTitle').value,
+            message: formData.get('message') || document.getElementById('announcementMessage').value,
+            priority: formData.get('priority') || document.getElementById('announcementPriority').value,
+            createdAt: serverTimestamp(),
+            createdBy: currentUser.username
+        };
+        
+        // Ajouter à Firestore
+        await addDoc(collection(db, 'announcements'), announcementData);
+        
+        closeModals();
+        showNotification('Annonce publiée avec succès!', 'success');
+        
+        // Recharger les annonces
+        await loadAnnouncements();
+        
+    } catch (error) {
+        console.error('Erreur publication annonce:', error);
+        showNotification('Erreur lors de la publication de l\'annonce', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function handleProfileSubmit(e) {
     e.preventDefault();
     
     try {
+        showLoading(true);
+        
         const formData = new FormData(e.target);
-        const currentPassword = formData.get('currentPassword');
-        const newPassword = formData.get('newPassword');
-        const confirmPassword = formData.get('confirmPassword');
-        
-        if (newPassword) {
-            if (currentUser.password !== currentPassword) {
-                alert('Mot de passe actuel incorrect');
-                return;
-            }
-            
-            if (newPassword !== confirmPassword) {
-                alert('Les nouveaux mots de passe ne correspondent pas');
-                return;
-            }
-            
-            if (newPassword.length < 4) {
-                alert('Le mot de passe doit contenir au moins 4 caractères');
-                return;
-            }
-        }
-        
-        // Handle profile picture upload
-        let profilePicture = currentUser.picture;
-        const profileImagePreview = document.getElementById('profileImagePreview');
-        if (profileImagePreview && profileImagePreview.src && profileImagePreview.style.display !== 'none') {
-            const file = document.getElementById('profilePicture').files[0];
-            if (file) {
-                const imagePath = `profiles/${currentUser.id}_${Date.now()}_${file.name}`;
-                profilePicture = await uploadImage(file, imagePath);
-            }
-        }
-        
         const updateData = {
-            fullName: formData.get('fullName'),
-            phone: formData.get('phone'),
-            address: formData.get('address'),
-            baptismDate: formData.get('baptismDate'),
-            picture: profilePicture
+            fullName: formData.get('fullName') || document.getElementById('profileFullName').value,
+            email: formData.get('email') || document.getElementById('profileEmail').value,
+            phone: formData.get('phone') || document.getElementById('profilePhone').value,
+            address: formData.get('address') || document.getElementById('profileAddress').value,
+            group: formData.get('group') || document.getElementById('profileGroup').value,
         };
         
+        // Mettre à jour le mot de passe s'il est fourni
+        const newPassword = formData.get('newPassword') || document.getElementById('profileNewPassword').value;
         if (newPassword) {
             updateData.password = newPassword;
         }
         
-        await updateEvangelist(currentUser.id, updateData);
+        // Mettre à jour dans Firestore
+        const userRef = doc(db, 'users', currentUser.username);
+        await updateDoc(userRef, updateData);
         
-        // Update current user object
+        // Mettre à jour l'utilisateur actuel
         Object.assign(currentUser, updateData);
         
-        // Clear password fields
-        document.getElementById('profileForm').elements.currentPassword.value = '';
-        document.getElementById('profileForm').elements.newPassword.value = '';
-        document.getElementById('profileForm').elements.confirmPassword.value = '';
+        showNotification('Profil mis à jour avec succès!', 'success');
         
-        // Update UI
-        document.getElementById('userName').textContent = currentUser.fullName;
-        updateUserProfileDisplay();
-        
-        showNotification('Profil mis à jour avec succès !', 'success');
+        // Recharger les données utilisateur
+        loadUserData();
         
     } catch (error) {
-        console.error('Error updating profile:', error);
+        console.error('Erreur mise à jour profil:', error);
         showNotification('Erreur lors de la mise à jour du profil', 'error');
-    }
-});
-
-// Image preview functions
-function previewProfilePicture(input) {
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const preview = document.getElementById('profileImagePreview');
-            const initials = document.getElementById('profileInitialsLarge');
-            
-            preview.src = e.target.result;
-            preview.style.display = 'block';
-            initials.style.display = 'none';
-            
-            // Update header profile picture too
-            const headerPicture = document.getElementById('userProfilePicture');
-            const headerInitials = document.getElementById('userInitials');
-            headerPicture.src = e.target.result;
-            headerPicture.style.display = 'block';
-            headerInitials.style.display = 'none';
-        };
-        reader.readAsDataURL(input.files[0]);
+    } finally {
+        showLoading(false);
     }
 }
 
-function previewSoulPicture(input) {
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const preview = document.getElementById('soulImagePreview');
-            const initials = document.getElementById('soulInitialsPreview');
-            
-            preview.src = e.target.result;
-            preview.style.display = 'block';
-            initials.style.display = 'none';
-        };
-        reader.readAsDataURL(input.files[0]);
+// Fonctions utilitaires
+async function loadGroupsForSelect(selectId) {
+    try {
+        const groupsSnapshot = await getDocs(collection(db, 'groups'));
+        const select = document.getElementById(selectId);
+        
+        if (!select) return;
+        
+        // Garder la première option
+        const firstOption = select.querySelector('option');
+        select.innerHTML = '';
+        if (firstOption) select.appendChild(firstOption);
+        
+        groupsSnapshot.forEach(doc => {
+            const group = doc.data();
+            const option = document.createElement('option');
+            option.value = group.id;
+            option.textContent = group.name;
+            select.appendChild(option);
+        });
+        
+    } catch (error) {
+        console.error('Erreur chargement groupes:', error);
     }
 }
 
-function updateSoulInitials(fullName) {
-    if (!fullName) return;
-    
-    const names = fullName.trim().split(' ');
-    const initials = names.map(name => name.charAt(0).toUpperCase()).slice(0, 2).join('');
-    
-    const initialsContainer = document.getElementById('soulInitialsPreview');
-    if (initialsContainer && document.getElementById('soulImagePreview').style.display !== 'block') {
-        initialsContainer.querySelector('span').textContent = initials || '👤';
+async function loadGroupsForFilter(selectId) {
+    try {
+        const groupsSnapshot = await getDocs(collection(db, 'groups'));
+        const select = document.getElementById(selectId);
+        
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Tous les groupes</option>';
+        
+        groupsSnapshot.forEach(doc => {
+            const group = doc.data();
+            const option = document.createElement('option');
+            option.value = group.id;
+            option.textContent = group.name;
+            select.appendChild(option);
+        });
+        
+    } catch (error) {
+        console.error('Erreur chargement groupes pour filtre:', error);
     }
 }
 
-// Delete confirmation functions
-async function deleteSoulConfirm(soulId) {
-    if (confirm('Êtes-vous sûr de vouloir supprimer cette âme ?')) {
-        try {
-            await deleteSoul(soulId);
-            await loadSoulsList();
-            await updateStats();
-            showNotification('Âme supprimée avec succès', 'success');
-        } catch (error) {
-            console.error('Error deleting soul:', error);
-            showNotification('Erreur lors de la suppression', 'error');
+async function loadEvangelistsForSelect(selectId) {
+    try {
+        const evangelistsQuery = query(collection(db, 'users'), where('role', '!=', 'coordinator'));
+        const evangelistsSnapshot = await getDocs(evangelistsQuery);
+        const select = document.getElementById(selectId);
+        
+        if (!select) return;
+        
+        // Garder la première option
+        const firstOption = select.querySelector('option');
+        select.innerHTML = '';
+        if (firstOption) select.appendChild(firstOption);
+        
+        evangelistsSnapshot.forEach(doc => {
+            const evangelist = doc.data();
+            const option = document.createElement('option');
+            option.value = evangelist.username;
+            option.textContent = evangelist.fullName;
+            select.appendChild(option);
+        });
+        
+    } catch (error) {
+        console.error('Erreur chargement évangélistes:', error);
+    }
+}
+
+async function loadSoulsForReport() {
+    try {
+        const soulsSnapshot = await getDocs(collection(db, 'souls'));
+        const container = document.getElementById('reportSouls');
+        
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        if (soulsSnapshot.empty) {
+            container.innerHTML = '<p class="text-gray-500 text-sm">Aucune âme disponible</p>';
+            return;
         }
+        
+        soulsSnapshot.forEach(doc => {
+            const soul = doc.data();
+            const checkbox = document.createElement('div');
+            checkbox.className = 'flex items-center space-x-2';
+            checkbox.innerHTML = `
+                <input type="checkbox" id="soul_${doc.id}" value="${doc.id}" class="rounded">
+                <label for="soul_${doc.id}" class="text-sm">${soul.name} (${soul.group})</label>
+            `;
+            container.appendChild(checkbox);
+        });
+        
+    } catch (error) {
+        console.error('Erreur chargement âmes pour rapport:', error);
     }
 }
 
-async function deleteEvangelistConfirm(evangelistId) {
-    if (!canManageEvangelists()) {
-        alert('Vous n\'avez pas les permissions pour supprimer des évangélistes');
-        return;
+async function loadEvangelistsForAttendance() {
+    try {
+        const evangelistsQuery = query(collection(db, 'users'), where('role', '!=', 'coordinator'));
+        const evangelistsSnapshot = await getDocs(evangelistsQuery);
+        const container = document.getElementById('attendanceList');
+        
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        evangelistsSnapshot.forEach(doc => {
+            const evangelist = doc.data();
+            const checkbox = document.createElement('div');
+            checkbox.className = 'flex items-center space-x-2';
+            checkbox.innerHTML = `
+                <input type="checkbox" id="evangelist_${doc.id}" value="${evangelist.username}" class="rounded">
+                <label for="evangelist_${doc.id}" class="text-sm">${evangelist.fullName}</label>
+            `;
+            container.appendChild(checkbox);
+        });
+        
+    } catch (error) {
+        console.error('Erreur chargement évangélistes pour présence:', error);
     }
-    
-    if (confirm('Êtes-vous sûr de vouloir supprimer cet évangéliste ?')) {
-        try {
-            await deleteEvangelist(evangelistId);
-            await loadEvangelistsList();
-            await updateStats();
-            showNotification('Évangéliste supprimé avec succès', 'success');
-        } catch (error) {
-            console.error('Error deleting evangelist:', error);
-            showNotification('Erreur lors de la suppression', 'error');
+}
+
+async function loadAnnouncements() {
+    try {
+        const announcementsQuery = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
+        const announcementsSnapshot = await getDocs(announcementsQuery);
+        const container = document.getElementById('announcementsList');
+        
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        if (announcementsSnapshot.empty) {
+            container.innerHTML = '<p class="text-gray-500">Aucune annonce</p>';
+            return;
         }
+        
+        announcementsSnapshot.forEach(doc => {
+            const announcement = doc.data();
+            const item = document.createElement('div');
+            item.className = `p-4 border-l-4 rounded ${
+                announcement.priority === 'urgent' ? 'border-red-500 bg-red-50' :
+                announcement.priority === 'important' ? 'border-yellow-500 bg-yellow-50' :
+                'border-blue-500 bg-blue-50'
+            }`;
+            item.innerHTML = `
+                <h4 class="font-medium">${announcement.title}</h4>
+                <p class="text-sm text-gray-600 mt-1">${announcement.message}</p>
+                <div class="flex justify-between items-center mt-2">
+                    <span class="text-xs text-gray-500">${formatDate(announcement.createdAt)}</span>
+                    <button onclick="deleteAnnouncement('${doc.id}')" class="text-red-600 hover:text-red-800 text-xs">
+                        Supprimer
+                    </button>
+                </div>
+            `;
+            container.appendChild(item);
+        });
+        
+    } catch (error) {
+        console.error('Erreur chargement annonces:', error);
     }
 }
 
-async function deleteReportConfirm(reportId) {
-    const reports = await getVisibleReports();
-    const report = reports.find(r => r.id === reportId);
+// Fonctions de filtrage
+function filterSouls() {
+    const searchTerm = document.getElementById('searchSouls').value.toLowerCase();
+    const groupFilter = document.getElementById('filterSoulsGroup').value;
     
-    if (!report) return;
+    const rows = document.querySelectorAll('#soulsTableBody tr');
     
-    if (report.evangelistId !== currentUser.id && !canManageEvangelists()) {
-        alert('Vous ne pouvez supprimer que vos propres rapports');
-        return;
-    }
-    
-    if (confirm('Êtes-vous sûr de vouloir supprimer ce rapport ?')) {
-        try {
-            const { db, doc, updateDoc } = window.firebase;
-            const reportRef = doc(db, 'reports', reportId);
-            await updateDoc(reportRef, { status: 'deleted' });
-            
-            await loadReportsList();
-            await updateStats();
-            showNotification('Rapport supprimé avec succès', 'success');
-        } catch (error) {
-            console.error('Error deleting report:', error);
-            showNotification('Erreur lors de la suppression', 'error');
-        }
-    }
+    rows.forEach(row => {
+        const name = row.cells[1].textContent.toLowerCase();
+        const phone = row.cells[2].textContent.toLowerCase();
+        const group = row.cells[3].textContent;
+        
+        const matchesSearch = name.includes(searchTerm) || phone.includes(searchTerm);
+        const matchesGroup = !groupFilter || group === groupFilter;
+        
+        row.style.display = matchesSearch && matchesGroup ? '' : 'none';
+    });
 }
 
-async function toggleEvangelistStatus(evangelistId) {
-    if (!isCoordonnateur()) {
-        alert('Seuls les coordonnateurs peuvent bloquer/débloquer des évangélistes');
-        return;
-    }
+function filterReports() {
+    const searchTerm = document.getElementById('searchReports').value.toLowerCase();
+    const dateFilter = document.getElementById('filterReportsDate').value;
+    
+    // Implémentation du filtrage des rapports
+    console.log('Filtrage rapports:', searchTerm, dateFilter);
+}
+
+function filterDocuments() {
+    const searchTerm = document.getElementById('searchDocuments').value.toLowerCase();
+    
+    const items = document.querySelectorAll('#documentsList .file-item');
+    
+    items.forEach(item => {
+        const name = item.querySelector('h4').textContent.toLowerCase();
+        const description = item.querySelector('p').textContent.toLowerCase();
+        
+        const matches = name.includes(searchTerm) || description.includes(searchTerm);
+        item.style.display = matches ? '' : 'none';
+    });
+}
+
+// Fonctions d'actions
+async function editSoul(soulId) {
+    // Implémentation de l'édition d'âme
+    console.log('Éditer âme:', soulId);
+}
+
+async function deleteSoul(soulId) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette âme?')) return;
     
     try {
-        const evangelists = await getVisibleEvangelists();
-        const evangelist = evangelists.find(e => e.id === evangelistId);
-        
-        if (!evangelist) return;
-        
-        const action = evangelist.status === 'active' ? 'bloquer' : 'débloquer';
-        const confirmMessage = `Êtes-vous sûr de vouloir ${action} cet évangéliste ?`;
-        
-        if (confirm(confirmMessage)) {
-            const newStatus = evangelist.status === 'active' ? 'blocked' : 'active';
-            await updateEvangelist(evangelistId, { status: newStatus });
-            
-            await loadEvangelistsList();
-            await updateStats();
-            showNotification(`Évangéliste ${action === 'bloquer' ? 'bloqué' : 'débloqué'} avec succès`, 'success');
-        }
+        await deleteDoc(doc(db, 'souls', soulId));
+        showNotification('Âme supprimée avec succès', 'success');
+        await loadSoulsData();
     } catch (error) {
-        console.error('Error toggling evangelist status:', error);
-        showNotification('Erreur lors de la modification du statut', 'error');
+        console.error('Erreur suppression âme:', error);
+        showNotification('Erreur lors de la suppression', 'error');
     }
 }
 
-// Notification system
-function showNotification(message, type = 'success') {
+async function editEvangelist(evangelistId) {
+    console.log('Éditer évangéliste:', evangelistId);
+}
+
+async function deleteEvangelist(evangelistId) {
+    if (currentUser.role !== 'coordinator') {
+        showNotification('Action non autorisée', 'error');
+        return;
+    }
+    
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cet évangéliste?')) return;
+    
+    try {
+        await deleteDoc(doc(db, 'users', evangelistId));
+        showNotification('Évangéliste supprimé avec succès', 'success');
+        await loadEvangelistsData();
+    } catch (error) {
+        console.error('Erreur suppression évangéliste:', error);
+        showNotification('Erreur lors de la suppression', 'error');
+    }
+}
+
+async function viewReport(reportId) {
+    console.log('Voir rapport:', reportId);
+}
+
+async function editReport(reportId) {
+    console.log('Éditer rapport:', reportId);
+}
+
+async function deleteReport(reportId) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce rapport?')) return;
+    
+    try {
+        await deleteDoc(doc(db, 'reports', reportId));
+        showNotification('Rapport supprimé avec succès', 'success');
+        await loadReportsData();
+    } catch (error) {
+        console.error('Erreur suppression rapport:', error);
+        showNotification('Erreur lors de la suppression', 'error');
+    }
+}
+
+async function downloadDocument(url) {
+    window.open(url, '_blank');
+}
+
+async function deleteDocument(documentId) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce document?')) return;
+    
+    try {
+        await deleteDoc(doc(db, 'documents', documentId));
+        showNotification('Document supprimé avec succès', 'success');
+        await loadLibraryData();
+    } catch (error) {
+        console.error('Erreur suppression document:', error);
+        showNotification('Erreur lors de la suppression', 'error');
+    }
+}
+
+async function deleteAnnouncement(announcementId) {
+    if (currentUser.role !== 'coordinator') return;
+    
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette annonce?')) return;
+    
+    try {
+        await deleteDoc(doc(db, 'announcements', announcementId));
+        showNotification('Annonce supprimée avec succès', 'success');
+        await loadAnnouncements();
+    } catch (error) {
+        console.error('Erreur suppression annonce:', error);
+        showNotification('Erreur lors de la suppression', 'error');
+    }
+}
+
+// Fonctions d'interface
+function toggleUserMenu() {
+    const menu = document.getElementById('userMenu');
+    menu.classList.toggle('hidden');
+}
+
+function toggleDarkMode() {
+    document.body.classList.toggle('dark');
+    const icon = document.querySelector('#darkModeToggle i');
+    icon.classList.toggle('fa-moon');
+    icon.classList.toggle('fa-sun');
+}
+
+async function handleAvatarChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    try {
+        showLoading(true);
+        
+        const avatarRef = ref(storage, `avatars/${currentUser.username}_${Date.now()}`);
+        const snapshot = await uploadBytes(avatarRef, file);
+        const avatarUrl = await getDownloadURL(snapshot.ref);
+        
+        // Mettre à jour dans Firestore
+        const userRef = doc(db, 'users', currentUser.username);
+        await updateDoc(userRef, { avatar: avatarUrl });
+        
+        // Mettre à jour l'interface
+        currentUser.avatar = avatarUrl;
+        document.getElementById('userAvatar').src = avatarUrl;
+        document.getElementById('profileAvatar').src = avatarUrl;
+        
+        showNotification('Photo de profil mise à jour!', 'success');
+        
+    } catch (error) {
+        console.error('Erreur upload avatar:', error);
+        showNotification('Erreur lors de la mise à jour de la photo', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function printReports() {
+    window.print();
+}
+
+function exportSouls() {
+    // Implémentation de l'export des âmes
+    showNotification('Fonctionnalité d\'export en cours de développement', 'info');
+}
+
+// Fonctions utilitaires
+function formatDate(timestamp) {
+    if (!timestamp) return '-';
+    
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+}
+
+function showNotification(message, type = 'info') {
+    const container = document.getElementById('notificationsContainer');
+    if (!container) return;
+    
     const notification = document.createElement('div');
-    notification.className = `notification bg-white dark:bg-gray-800 border-l-4 ${
-        type === 'success' ? 'border-green-500' : 'border-red-500'
-    } rounded-lg shadow-lg p-4 transform translate-x-full transition-transform duration-300`;
+    notification.className = `notification p-4 rounded-lg shadow-lg max-w-sm ${
+        type === 'success' ? 'bg-green-500 text-white' :
+        type === 'error' ? 'bg-red-500 text-white' :
+        type === 'warning' ? 'bg-yellow-500 text-white' :
+        'bg-blue-500 text-white'
+    }`;
     
     notification.innerHTML = `
-        <div class="flex items-center">
-            <div class="flex-shrink-0">
-                <i data-lucide="${type === 'success' ? 'check-circle' : 'alert-circle'}"
-                class="w-5 h-5 ${type === 'success' ? 'text-green-500' : 'text-red-500'}"></i>
-            </div>
-            <div class="ml-3">
-                <p class="text-sm font-medium text-gray-900 dark:text-white">${message}</p>
-            </div>
-            <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-gray-400 hover:text-gray-600">
-                <i data-lucide="x" class="w-4 h-4"></i>
-            </button>
+        <div class="flex items-center space-x-2">
+            <i class="fas fa-${
+                type === 'success' ? 'check-circle' :
+                type === 'error' ? 'exclamation-circle' :
+                type === 'warning' ? 'exclamation-triangle' :
+                'info-circle'
+            }"></i>
+            <span>${message}</span>
         </div>
     `;
     
-    document.getElementById('notificationsContainer').appendChild(notification);
-    lucide.createIcons();
+    container.appendChild(notification);
     
+    // Supprimer après 5 secondes
     setTimeout(() => {
-        notification.style.transform = 'translateX(0)';
-    }, 100);
-    
-    setTimeout(() => {
-        notification.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            if (notification.parentElement) {
-                notification.parentElement.removeChild(notification);
-            }
-        }, 300);
+        notification.remove();
     }, 5000);
 }
 
-// Dark mode support
-if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    document.documentElement.classList.add('dark');
+function showLoading(show) {
+    isLoading = show;
+    // Implémentation de l'indicateur de chargement
 }
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
-    if (event.matches) {
-        document.documentElement.classList.add('dark');
-    } else {
-        document.documentElement.classList.remove('dark');
+
+// Fermer les menus en cliquant ailleurs
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#userMenuBtn') && !e.target.closest('#userMenu')) {
+        document.getElementById('userMenu').classList.add('hidden');
     }
 });
 
-// Placeholder functions for features not yet implemented
-function viewSoulDetails(soulId) {
-    console.log('View soul details:', soulId);
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-function viewReportDetails(reportId) {
-    console.log('View report details:', reportId);
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-function editSoul(soulId) {
-    console.log('Edit soul:', soulId);
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-function editEvangelist(evangelistId) {
-    console.log('Edit evangelist:', evangelistId);
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-function printReport(reportId) {
-    console.log('Print report:', reportId);
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-function openGroupsModal() {
-    console.log('Open groups modal');
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-function openSiteSettingsModal() {
-    console.log('Open site settings modal');
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-function openAnnouncementModal() {
-    console.log('Open announcement modal');
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-function showNotificationsModal() {
-    console.log('Show notifications modal');
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-function openAddDocumentModal() {
-    console.log('Open add document modal');
-    showNotification('Fonctionnalité en cours de développement', 'info');
-}
-
-// Initialize icons when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    lucide.createIcons();
+// Fermer les modales en cliquant sur le backdrop
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal-backdrop')) {
+        closeModals();
+    }
 });
+
+console.log('🔥 Firebase configuré et application initialisée');
