@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CECNE - Gestion d'Évangélisation</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Firebase SDKs -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+  // Configuration Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyAaegtkBUd-fk9F0yokbNGxgRpF57E0dlE",
+    authDomain: "cecne-768ff.firebaseapp.com",
+    projectId: "cecne-768ff",
+    storageBucket: "cecne-768ff.firebasestorage.app",
+    messagingSenderId: "295270043435",
+    appId: "1:295270043435:web:357f8fafdeb5671d51bf6e"
+  };
+
+  // Initialiser Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const storage = getStorage(app);
+  const auth = getAuth(app);
+
+  // Rendre disponible globalement
+  window.firebase = {
+    db,
+    storage,
+    auth,
+    collection,
+    doc,
+    setDoc,
+    getDoc,
+    getDocs,
+    updateDoc,
+    deleteDoc,
+    query,
+    where,
+    orderBy,
+    onSnapshot,
+    ref,
+    uploadBytes,
+    getDownloadURL,
+    deleteObject,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged
+  };
+
+  // Initialiser l'application après le chargement de Firebase
+  window.addEventListener('DOMContentLoaded', () => {
+    initializeFirebaseApp();
+  });
+</script>
+
+<script>
+tailwind.config = {
+theme: {
+extend: {
+colors: {
+primary: '#5D5CDE',
+secondary: '#F3F4F6'
+}
+}
+}
+}
+</script>
+<style>
+.fade-in {
+animation: fadeIn 0.3s ease-in-out;
+}
+.slide-up {
+animation: slideUp 0.3s ease-out;
+}
+@keyframes fadeIn {
+from { opacity: 0; }
+to { opacity: 1; }
+}
+@keyframes slideUp {
+from { transform: translateY(20px); opacity: 0; }
+to { transform: translateY(0); opacity: 1; }
+}
+.gradient-bg {
+background: linear-gradient(135deg, #5D5CDE 0%, #8B7DFF 100%);
+}
+#map {
+height: 400px;
+border-radius: 12px;
+}
+.leaflet-popup-content-wrapper {
+border-radius: 8px;
+}
+.chat-message {
+animation: slideInMessage 0.3s ease-out;
+}
+@keyframes slideInMessage {
+from {
+opacity: 0;
+transform: translateY(10px);
+}
+to {
+opacity: 1;
+transform: translateY(0);
+}
+}
+.cecne-logo {
+background: linear-gradient(135deg, #5D5CDE 0%, #8B7DFF 100%);
+}
+.notification {
+animation: slideInNotification 0.3s ease-out;
+}
+@keyframes slideInNotification {
+from { transform: translateX(100%); }
+to { transform: translateX(0); }
+}
+.status-details {
+display: none;
+}
+.status-details.active {
+display: block;
+}
+.profile-picture {
+width: 40px;
+height: 40px;
+border-radius: 50%;
+object-fit: cover;
+}
+.soul-picture {
+width: 60px;
+height: 60px;
+border-radius: 50%;
+object-fit: cover;
+}
+.chart-container {
+position: relative;
+height: 300px;
+width: 100%;
+}
+.attendance-day {
+transition: all 0.2s ease;
+cursor: pointer;
+user-select: none;
+}
+.attendance-day.selected {
+background-color: #5D5CDE;
+color: white;
+}
+.attendance-day:hover {
+background-color: #8B7DFF;
+color: white;
+}
+.loading-spinner {
+display: inline-block;
+width: 20px;
+height: 20px;
+border: 3px solid #f3f3f3;
+border-top: 3px solid #5D5CDE;
+border-radius: 50%;
+animation: spin 1s linear infinite;
+}
+@keyframes spin {
+0% { transform: rotate(0deg); }
+100% { transform: rotate(360deg); }
+}
+@media print {
+body * {
+visibility: hidden;
+}
+#printableContent, #printableContent * {
+visibility: visible;
+}
+#printableContent {
+position: absolute;
+left: 0;
+top: 0;
+width: 100%;
+}
+}
+</style>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-900">
+<div id="app" class="h-full">
+<!-- Loading Screen -->
+<div id="loadingScreen" class="h-full flex items-center justify-center p-6">
+<div class="text-center">
+<div class="cecne-logo w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+<svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+<circle cx="50" cy="50" r="45" fill="white" fill-opacity="0.2"/>
+<path d="M30 70L35 65V45L30 40H25V35L30 30H40L45 35V40L50 35L55 40V35L60 30H70L75 35V40L70 45V65L75 70V75L70 80H60L55 75V70L50 75L45 70V75L40 80H30L25 75V70H30Z" fill="white"/>
+<rect x="47" y="20" width="6" height="25" fill="white"/>
+<path d="M40 25L45 20L55 20L60 25L55 30L45 30Z" fill="white"/>
+</svg>
+</div>
+<h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">CECNE</h1>
+<p class="text-gray-600 dark:text-gray-400 mb-4">Centre d'Évangélisation et Gestion des Âmes</p>
+<div class="loading-spinner mx-auto"></div>
+<p class="text-sm text-gray-500 dark:text-gray-400 mt-4">Chargement...</p>
+</div>
+</div>
+
+<!-- Notifications Container -->
+<div id="notificationsContainer" class="fixed top-4 right-4 z-50 space-y-2 max-w-sm"></div>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="hidden h-full flex items-center justify-center p-6">
+<div class="w-full max-w-md">
+<div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+<div class="text-center mb-8">
+<div class="cecne-logo w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4" id="loginLogo">
+<svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+<circle cx="50" cy="50" r="45" fill="white" fill-opacity="0.2"/>
+<path d="M30 70L35 65V45L30 40H25V35L30 30H40L45 35V40L50 35L55 40V35L60 30H70L75 35V40L70 45V65L75 70V75L70 80H60L55 75V70L50 75L45 70V75L40 80H30L25 75V70H30Z" fill="white"/>
+<rect x="47" y="20" width="6" height="25" fill="white"/>
+<path d="M40 25L45 20L55 20L60 25L55 30L45 30Z" fill="white"/>
+</svg>
+</div>
+<h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2" id="loginTitle">CECNE</h1>
+<p class="text-gray-600 dark:text-gray-400" id="loginSubtitle">Centre d'Évangélisation et Gestion des Âmes</p>
+</div>
+
+<form id="loginForm" class="space-y-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Nom d'utilisateur
+</label>
+<input type="text" id="username" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="Votre nom d'utilisateur">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Mot de passe
+</label>
+<input type="password" id="password" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="Votre mot de passe">
+</div>
+
+<button type="submit" id="loginButton"
+class="w-full gradient-bg text-white font-semibold py-3 px-6 rounded-xl hover:opacity-90 transition-opacity shadow-lg">
+Se connecter
+</button>
+</form>
+
+<div class="mt-6 text-center">
+<p class="text-sm text-gray-600 dark:text-gray-400">
+Utilisateur par défaut: <strong>admin</strong><br>
+Mot de passe: <strong>admin123</strong>
+</p>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Main Application -->
+<div id="mainApp" class="hidden h-full flex flex-col">
+<!-- Header -->
+<header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+<div class="flex items-center justify-between px-4 py-4">
+<div class="flex items-center space-x-3">
+<div class="cecne-logo w-10 h-10 rounded-full flex items-center justify-center" id="headerLogo">
+<svg width="20" height="20" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M30 70L35 65V45L30 40H25V35L30 30H40L45 35V40L50 35L55 40V35L60 30H70L75 35V40L70 45V65L75 70V75L70 80H60L55 75V70L50 75L45 70V75L40 80H30L25 75V70H30Z" fill="white"/>
+<rect x="47" y="20" width="6" height="25" fill="white"/>
+<path d="M40 25L45 20L55 20L60 25L55 30L45 30Z" fill="white"/>
+</svg>
+</div>
+<div>
+<h1 class="text-xl font-bold text-gray-900 dark:text-white" id="headerTitle">Dashboard</h1>
+<p class="text-sm text-gray-500 dark:text-gray-400" id="headerSubtitle">Centre-ville</p>
+</div>
+</div>
+<div class="flex items-center space-x-3">
+<div id="notificationIndicator" class="hidden relative">
+<button onclick="showNotificationsModal()" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+<i data-lucide="bell" class="w-5 h-5"></i>
+<span id="notificationBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center"></span>
+</button>
+</div>
+<button id="siteSettingsBtn" onclick="openSiteSettingsModal()" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+<i data-lucide="settings" class="w-5 h-5"></i>
+</button>
+<button onclick="showPage('profilePage')" class="flex items-center text-right hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-lg transition-colors">
+<img id="userProfilePicture" src="" alt="Profile" class="profile-picture mr-2 bg-gray-300 dark:bg-gray-600" style="display: none;">
+<div class="w-8 h-8 gradient-bg rounded-full flex items-center justify-center mr-2" id="userInitials">
+<span class="text-white text-sm font-semibold"></span>
+</div>
+<div>
+<p class="text-sm font-medium text-gray-900 dark:text-white" id="userName"></p>
+<p class="text-xs text-gray-500 dark:text-gray-400" id="userRole"></p>
+</div>
+</button>
+<button id="logoutBtn" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+<i data-lucide="log-out" class="w-5 h-5"></i>
+</button>
+</div>
+</div>
+</header>
+
+<!-- Content Container -->
+<div class="flex-1 overflow-hidden">
+<!-- Dashboard -->
+<div id="dashboardPage" class="h-full overflow-y-auto p-4">
+<div class="max-w-6xl mx-auto space-y-6">
+<!-- Announcements for Coordinateur -->
+<div id="announcementsSection" class="hidden">
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex justify-between items-center mb-4">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Annonces</h2>
+<button onclick="openAnnouncementModal()" class="text-sm text-primary hover:text-purple-700 font-medium transition-colors flex items-center">
+<i data-lucide="plus" class="w-4 h-4 mr-1"></i>
+Nouvelle annonce
+</button>
+</div>
+<div id="announcementsList" class="space-y-3">
+<!-- Populated by JavaScript -->
+</div>
+</div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex items-center justify-between">
+<div>
+<p class="text-3xl font-bold text-gray-900 dark:text-white" id="totalSouls">0</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">Âmes gagnées</p>
+</div>
+<div class="bg-blue-100 dark:bg-blue-900 p-3 rounded-xl">
+<i data-lucide="heart" class="w-6 h-6 text-blue-600 dark:text-blue-400"></i>
+</div>
+</div>
+</div>
+
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex items-center justify-between">
+<div>
+<p class="text-3xl font-bold text-gray-900 dark:text-white" id="totalEvangelists">0</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">Évangélistes</p>
+</div>
+<div class="bg-green-100 dark:bg-green-900 p-3 rounded-xl">
+<i data-lucide="users" class="w-6 h-6 text-green-600 dark:text-green-400"></i>
+</div>
+</div>
+</div>
+
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex items-center justify-between">
+<div>
+<p class="text-3xl font-bold text-gray-900 dark:text-white" id="totalReports">0</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">Rapports</p>
+</div>
+<div class="bg-purple-100 dark:bg-purple-900 p-3 rounded-xl">
+<i data-lucide="file-text" class="w-6 h-6 text-purple-600 dark:text-purple-400"></i>
+</div>
+</div>
+</div>
+
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex items-center justify-between">
+<div>
+<p class="text-3xl font-bold text-gray-900 dark:text-white" id="weeklyStats">7</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">Cette semaine</p>
+</div>
+<div class="bg-orange-100 dark:bg-orange-900 p-3 rounded-xl">
+<i data-lucide="trending-up" class="w-6 h-6 text-orange-600 dark:text-orange-400"></i>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Statistics Chart for Coordinateur -->
+<div id="statisticsChartSection" class="hidden">
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Statistiques d'évangélisation</h2>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<div class="chart-container">
+<canvas id="evangelizationChart"></canvas>
+</div>
+<div class="chart-container">
+<canvas id="groupStatsChart"></canvas>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Quick Actions -->
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex justify-between items-center mb-4">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Actions rapides</h2>
+<button id="manageGroupsBtn" onclick="openGroupsModal()" class="text-sm text-primary hover:text-purple-700 font-medium transition-colors flex items-center">
+<i data-lucide="settings" class="w-4 h-4 mr-1"></i>
+Gérer les groupes
+</button>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+<button onclick="showPage('addSoulPage')" class="group bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-800/30 dark:hover:to-blue-700/30 p-4 rounded-xl transition-all duration-200">
+<i data-lucide="user-plus" class="w-8 h-8 text-blue-600 dark:text-blue-400 mb-2 mx-auto block group-hover:scale-110 transition-transform"></i>
+<p class="text-sm font-medium text-blue-900 dark:text-blue-300">Nouvelle âme</p>
+</button>
+
+<button onclick="showPage('soulsPage')" class="group bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 hover:from-green-100 hover:to-green-200 dark:hover:from-green-800/30 dark:hover:to-green-700/30 p-4 rounded-xl transition-all duration-200">
+<i data-lucide="list" class="w-8 h-8 text-green-600 dark:text-green-400 mb-2 mx-auto block group-hover:scale-110 transition-transform"></i>
+<p class="text-sm font-medium text-green-900 dark:text-green-300">Voir âmes</p>
+</button>
+
+<button onclick="showPage('evangelistsPage')" class="group bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-800/30 dark:hover:to-purple-700/30 p-4 rounded-xl transition-all duration-200">
+<i data-lucide="users" class="w-8 h-8 text-purple-600 dark:text-purple-400 mb-2 mx-auto block group-hover:scale-110 transition-transform"></i>
+<p class="text-sm font-medium text-purple-900 dark:text-purple-300">Équipe</p>
+</button>
+
+<button onclick="showPage('reportsPage')" class="group bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-900/20 dark:to-pink-800/20 hover:from-pink-100 hover:to-pink-200 dark:hover:from-pink-800/30 dark:hover:to-pink-700/30 p-4 rounded-xl transition-all duration-200">
+<i data-lucide="file-text" class="w-8 h-8 text-pink-600 dark:text-pink-400 mb-2 mx-auto block group-hover:scale-110 transition-transform"></i>
+<p class="text-sm font-medium text-pink-900 dark:text-pink-300">Rapports</p>
+</button>
+
+<button onclick="showPage('mapPage')" class="group bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-800/30 dark:hover:to-orange-700/30 p-4 rounded-xl transition-all duration-200">
+<i data-lucide="map" class="w-8 h-8 text-orange-600 dark:text-orange-400 mb-2 mx-auto block group-hover:scale-110 transition-transform"></i>
+<p class="text-sm font-medium text-orange-900 dark:text-orange-300">Carte</p>
+</button>
+
+<button onclick="showPage('libraryPage')" class="group bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/20 dark:to-indigo-800/20 hover:from-indigo-100 hover:to-indigo-200 dark:hover:from-indigo-800/30 dark:hover:to-indigo-700/30 p-4 rounded-xl transition-all duration-200">
+<i data-lucide="book-open" class="w-8 h-8 text-indigo-600 dark:text-indigo-400 mb-2 mx-auto block group-hover:scale-110 transition-transform"></i>
+<p class="text-sm font-medium text-indigo-900 dark:text-indigo-300">Bibliothèque</p>
+</button>
+</div>
+</div>
+
+<!-- Recent Activity -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Âmes récentes</h3>
+<div id="recentSoulsList" class="space-y-3">
+<!-- Populated by JavaScript -->
+</div>
+<button onclick="showPage('soulsPage')" class="mt-4 w-full text-sm text-primary hover:text-purple-700 font-medium transition-colors">
+Voir toutes les âmes →
+</button>
+</div>
+
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Rapports récents</h3>
+<div id="recentReportsList" class="space-y-3">
+<!-- Populated by JavaScript -->
+</div>
+<button onclick="showPage('reportsPage')" class="mt-4 w-full text-sm text-primary hover:text-purple-700 font-medium transition-colors">
+Voir tous les rapports →
+</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Library Page -->
+<div id="libraryPage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-6xl mx-auto">
+<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+<div>
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Bibliothèque</h2>
+<p class="text-gray-600 dark:text-gray-400">Documents et ressources importantes</p>
+</div>
+<button id="addDocumentBtn" onclick="openAddDocumentModal()" class="gradient-bg text-white px-6 py-3 rounded-xl font-medium hover:opacity-90 transition-opacity shadow-lg flex items-center">
+<i data-lucide="plus" class="w-5 h-5 mr-2"></i>
+Ajouter un document
+</button>
+</div>
+
+<!-- Search Documents -->
+<div class="bg-white dark:bg-gray-800 rounded-xl p-4 mb-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+<div class="flex-1">
+<input type="text" id="searchDocuments" placeholder="Rechercher des documents..."
+class="w-full px-4 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+</div>
+<select id="filterDocumentCategory" class="px-4 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+<option value="">Toutes les catégories</option>
+<option value="Formation">Formation</option>
+<option value="Prédication">Prédication</option>
+<option value="Administration">Administration</option>
+<option value="Liturgie">Liturgie</option>
+<option value="Autre">Autre</option>
+</select>
+</div>
+</div>
+
+<div id="documentsGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<!-- Populated by JavaScript -->
+</div>
+</div>
+</div>
+
+<!-- Attendance Page -->
+<div id="attendancePage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-4xl mx-auto">
+<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+<div>
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Signaler ma présence</h2>
+<p class="text-gray-600 dark:text-gray-400">Indiquez vos disponibilités pour cette semaine</p>
+</div>
+<div class="text-sm text-gray-500 dark:text-gray-400">
+Semaine du <span id="currentWeekRange"></span>
+</div>
+</div>
+
+<!-- Current Week Attendance -->
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
+<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Ma disponibilité</h3>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3" id="attendanceDays">
+<!-- Populated by JavaScript -->
+</div>
+<div class="mt-6 flex justify-end">
+<button onclick="saveAttendance()" class="gradient-bg text-white px-6 py-3 rounded-xl font-medium hover:opacity-90 transition-opacity shadow-lg">
+Sauvegarder ma disponibilité
+</button>
+</div>
+</div>
+
+<!-- Team Attendance (for coordinators and assistants) -->
+<div id="teamAttendanceSection" class="hidden">
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Disponibilité de l'équipe</h3>
+<div id="teamAttendanceList" class="space-y-4">
+<!-- Populated by JavaScript -->
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Reports Page -->
+<div id="reportsPage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-6xl mx-auto">
+<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+<div>
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Rapports d'évangélisation</h2>
+<p class="text-gray-600 dark:text-gray-400">Gestion des rapports de sortie</p>
+</div>
+<div class="flex space-x-3">
+<button onclick="showPage('addReportPage')" class="gradient-bg text-white px-6 py-3 rounded-xl font-medium hover:opacity-90 transition-opacity shadow-lg flex items-center">
+<i data-lucide="plus" class="w-5 h-5 mr-2"></i>
+Nouveau rapport
+</button>
+</div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+<div class="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex items-center justify-between">
+<div>
+<p class="text-2xl font-bold text-gray-900 dark:text-white" id="totalOutings">0</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">Sorties totales</p>
+</div>
+<div class="bg-purple-100 dark:bg-purple-900 p-2 rounded-lg">
+<i data-lucide="map-pin" class="w-5 h-5 text-purple-600 dark:text-purple-400"></i>
+</div>
+</div>
+</div>
+
+<div class="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex items-center justify-between">
+<div>
+<p class="text-2xl font-bold text-gray-900 dark:text-white" id="totalFaithfulSouls">0</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">Âmes fidélisées</p>
+</div>
+<div class="bg-green-100 dark:bg-green-900 p-2 rounded-lg">
+<i data-lucide="heart" class="w-5 h-5 text-green-600 dark:text-green-400"></i>
+</div>
+</div>
+</div>
+
+<div class="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex items-center justify-between">
+<div>
+<p class="text-2xl font-bold text-gray-900 dark:text-white" id="totalUnfaithfulSouls">0</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">Âmes non fidélisées</p>
+</div>
+<div class="bg-orange-100 dark:bg-orange-900 p-2 rounded-lg">
+<i data-lucide="user-x" class="w-5 h-5 text-orange-600 dark:text-orange-400"></i>
+</div>
+</div>
+</div>
+
+<div class="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex items-center justify-between">
+<div>
+<p class="text-2xl font-bold text-gray-900 dark:text-white" id="faithfulnessRate">0%</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">Taux fidélisation</p>
+</div>
+<div class="bg-blue-100 dark:bg-blue-900 p-2 rounded-lg">
+<i data-lucide="trending-up" class="w-5 h-5 text-blue-600 dark:text-blue-400"></i>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Active Announcements -->
+<div id="reportAnnouncements" class="mb-6">
+<!-- Populated by JavaScript -->
+</div>
+
+<!-- Search and Filter -->
+<div class="bg-white dark:bg-gray-800 rounded-xl p-4 mb-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+<div class="flex-1">
+<input type="text" id="searchReports" placeholder="Rechercher par évangéliste ou âme..."
+class="w-full px-4 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+</div>
+<select id="filterReportGroup" class="px-4 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+<option value="">Tous les groupes</option>
+</select>
+</div>
+</div>
+
+<!-- Printable Content for Individual Report -->
+<div id="printableContent" style="display: none;">
+<div class="text-center mb-6">
+<h1 class="text-2xl font-bold" id="printableTitle">CECNE - Rapport d'Évangélisation</h1>
+<p class="text-gray-600">Date d'impression: <span id="printDate"></span></p>
+</div>
+<div id="printableReportContent">
+<!-- Populated by JavaScript -->
+</div>
+</div>
+
+<div id="reportsGrid" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<!-- Populated by JavaScript -->
+</div>
+</div>
+</div>
+
+<!-- Add Report Form -->
+<div id="addReportPage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-4xl mx-auto">
+<div class="mb-6">
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Nouveau rapport d'évangélisation</h2>
+<p class="text-gray-600 dark:text-gray-400">Enregistrer un rapport de sortie d'évangélisation</p>
+</div>
+
+<form id="reportForm" class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Date de sortie *
+</label>
+<input type="date" name="reportDate" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Lieu de sortie *
+</label>
+<input type="text" name="location" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="Lieu où s'est déroulée l'évangélisation">
+</div>
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Collaborateurs *
+</label>
+<div id="collaboratorsContainer" class="space-y-2">
+<!-- Populated by JavaScript -->
+</div>
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Âmes rencontrées *
+</label>
+<div id="soulsMetContainer" class="space-y-3">
+<div class="souls-met-item border-2 border-gray-200 dark:border-gray-600 rounded-xl p-4">
+<div class="mb-4">
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sélectionner une âme de votre groupe</label>
+<select name="existingSoul[]" class="w-full px-3 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white" onchange="fillSoulData(this)">
+<option value="">Nouvelle âme...</option>
+<!-- Populated by JavaScript -->
+</select>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+<div>
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nom de l'âme</label>
+<input type="text" name="soulName[]" required
+class="w-full px-3 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Téléphone</label>
+<input type="tel" name="soulPhone[]"
+class="w-full px-3 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+</div>
+</div>
+<div class="mb-4">
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ce qui a été partagé/discuté</label>
+<textarea name="discussionContent[]" rows="3" required
+class="w-full px-3 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+placeholder="Décrivez ce qui a été partagé, les réactions, les décisions..."></textarea>
+</div>
+<div class="mb-4">
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type d'intervention</label>
+<select name="soulStatus[]" required onchange="showStatusDetails(this)"
+class="w-full px-3 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+<option value="">Sélectionner un type</option>
+<option value="priere">Prière</option>
+<option value="exhortation">Exhortation</option>
+<option value="affermissement">Affermissement</option>
+<option value="conseil_spirituel">Conseil spirituel</option>
+<option value="invitation">Invitation</option>
+<option value="autre">Autre</option>
+</select>
+</div>
+<div class="mb-4">
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">État de fidélisation</label>
+<select name="faithfulnessStatus[]" required
+class="w-full px-3 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+<option value="">Sélectionner l'état</option>
+<option value="faithful">Fidélisée</option>
+<option value="unfaithful">Non fidélisée</option>
+<option value="pending">En cours</option>
+</select>
+</div>
+<div class="status-details" data-status="exhortation">
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Verset utilisé</label>
+<input type="text" name="verseUsed[]"
+class="w-full px-3 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+placeholder="Ex: Jean 3:16">
+</div>
+<div class="status-details" data-status="affermissement">
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Titre de l'affermissement</label>
+<input type="text" name="strengtheningTitle[]"
+class="w-full px-3 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+placeholder="Ex: La prière efficace">
+</div>
+<button type="button" onclick="removeSoulMet(this)" class="mt-3 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-sm">
+<i data-lucide="trash-2" class="w-4 h-4 inline mr-1"></i>
+Supprimer cette âme
+</button>
+</div>
+</div>
+<button type="button" onclick="addSoulMet()" class="mt-3 text-primary hover:text-purple-700 font-medium text-sm flex items-center">
+<i data-lucide="plus" class="w-4 h-4 mr-1"></i>
+Ajouter une autre âme
+</button>
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Observations générales
+</label>
+<textarea name="observations" rows="4"
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="Observations générales sur la sortie, défis rencontrés, points de prière..."></textarea>
+</div>
+
+<div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
+<button type="submit" class="flex-1 gradient-bg text-white font-semibold py-3 px-6 rounded-xl hover:opacity-90 transition-opacity shadow-lg">
+Enregistrer le rapport
+</button>
+<button type="button" onclick="showPage('reportsPage')" class="flex-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 font-semibold py-3 px-6 rounded-xl transition-colors">
+Annuler
+</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- Map Page -->
+<div id="mapPage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-6xl mx-auto">
+<div class="mb-6">
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Carte des évangélistes</h2>
+<p class="text-gray-600 dark:text-gray-400">Localisation des équipes et âmes gagnées à Kinshasa, RDC</p>
+</div>
+
+<div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div id="map" class="w-full"></div>
+<div class="mt-4 flex flex-wrap gap-4">
+<div class="flex items-center">
+<div class="w-4 h-4 bg-green-500 rounded-full mr-2"></div>
+<span class="text-sm text-gray-600 dark:text-gray-400">Évangélistes</span>
+</div>
+<div class="flex items-center">
+<div class="w-4 h-4 bg-blue-500 rounded-full mr-2"></div>
+<span class="text-sm text-gray-600 dark:text-gray-400">Nouvelles âmes</span>
+</div>
+<div class="flex items-center">
+<div class="w-4 h-4 bg-purple-500 rounded-full mr-2"></div>
+<span class="text-sm text-gray-600 dark:text-gray-400">Coordonnateurs</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Profile Page -->
+<div id="profilePage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-2xl mx-auto">
+<div class="mb-6">
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Mon Profil</h2>
+<p class="text-gray-600 dark:text-gray-400">Gérer mes informations personnelles</p>
+</div>
+
+<form id="profileForm" class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-6">
+<div class="flex flex-col items-center mb-6">
+<div class="relative">
+<img id="profileImagePreview" src="" alt="Photo de profil" class="w-24 h-24 rounded-full object-cover bg-gray-300 dark:bg-gray-600" style="display: none;">
+<div id="profileInitialsLarge" class="w-24 h-24 gradient-bg rounded-full flex items-center justify-center">
+<span class="text-white text-2xl font-semibold"></span>
+</div>
+<button type="button" onclick="document.getElementById('profilePicture').click()" class="absolute bottom-0 right-0 bg-primary text-white rounded-full p-2 hover:bg-purple-700 transition-colors">
+<i data-lucide="camera" class="w-4 h-4"></i>
+</button>
+</div>
+<input type="file" id="profilePicture" name="profilePicture" accept="image/*" style="display: none;" onchange="previewProfilePicture(this)">
+<p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Cliquez pour changer la photo</p>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Nom complet *
+</label>
+<input type="text" name="fullName" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Nom d'utilisateur
+</label>
+<input type="text" name="username" readonly
+class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400">
+</div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Téléphone *
+</label>
+<input type="tel" name="phone" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Rôle
+</label>
+<input type="text" name="role" readonly
+class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400">
+</div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Adresse *
+</label>
+<input type="text" name="address" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Groupe
+</label>
+<input type="text" name="group" readonly
+class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400">
+</div>
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Date de baptême
+</label>
+<input type="date" name="baptismDate"
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+</div>
+
+<hr class="border-gray-200 dark:border-gray-600">
+
+<div class="space-y-4">
+<h3 class="text-lg font-semibold text-gray-900 dark:text-white">Changer le mot de passe</h3>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Mot de passe actuel
+</label>
+<input type="password" name="currentPassword"
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Nouveau mot de passe
+</label>
+<input type="password" name="newPassword"
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Confirmer nouveau mot de passe
+</label>
+<input type="password" name="confirmPassword"
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+</div>
+</div>
+</div>
+
+<div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
+<button type="submit" class="flex-1 gradient-bg text-white font-semibold py-3 px-6 rounded-xl hover:opacity-90 transition-opacity shadow-lg">
+Enregistrer les modifications
+</button>
+<button type="button" onclick="showPage('dashboardPage')" class="flex-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 font-semibold py-3 px-6 rounded-xl transition-colors">
+Annuler
+</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- Souls Management -->
+<div id="soulsPage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-6xl mx-auto">
+<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+<div>
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Âmes gagnées</h2>
+<p class="text-gray-600 dark:text-gray-400">Gestion des nouvelles conversions</p>
+</div>
+<button onclick="showPage('addSoulPage')" class="gradient-bg text-white px-6 py-3 rounded-xl font-medium hover:opacity-90 transition-opacity shadow-lg flex items-center">
+<i data-lucide="plus" class="w-5 h-5 mr-2"></i>
+Ajouter une âme
+</button>
+</div>
+
+<!-- Search and Filter -->
+<div class="bg-white dark:bg-gray-800 rounded-xl p-4 mb-6 shadow-sm border border-gray-200 dark:border-gray-700">
+<div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+<div class="flex-1">
+<input type="text" id="searchSouls" placeholder="Rechercher par nom ou téléphone..."
+class="w-full px-4 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+</div>
+<select id="filterGroup" class="px-4 py-2 text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+<option value="">Tous les groupes</option>
+</select>
+</div>
+</div>
+
+<div id="soulsGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<!-- Populated by JavaScript -->
+</div>
+</div>
+</div>
+
+<!-- Add Soul Form -->
+<div id="addSoulPage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-2xl mx-auto">
+<div class="mb-6">
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Nouvelle âme</h2>
+<p class="text-gray-600 dark:text-gray-400">Enregistrer une nouvelle conversion</p>
+</div>
+
+<form id="soulForm" class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-6">
+<div class="flex flex-col items-center mb-6">
+<div class="relative">
+<img id="soulImagePreview" src="" alt="Photo de l'âme" class="soul-picture bg-gray-300 dark:bg-gray-600" style="display: none;">
+<div id="soulInitialsPreview" class="soul-picture gradient-bg flex items-center justify-center">
+<span class="text-white text-lg font-semibold">👤</span>
+</div>
+<button type="button" onclick="document.getElementById('soulPicture').click()" class="absolute bottom-0 right-0 bg-primary text-white rounded-full p-1 hover:bg-purple-700 transition-colors">
+<i data-lucide="camera" class="w-3 h-3"></i>
+</button>
+</div>
+<input type="file" id="soulPicture" name="soulPicture" accept="image/*" style="display: none;" onchange="previewSoulPicture(this)">
+<p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Photo de l'âme (optionnel)</p>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Nom complet *
+</label>
+<input type="text" name="fullName" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="Nom et prénom" onchange="updateSoulInitials(this.value)">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Téléphone *
+</label>
+<input type="tel" name="phone" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="+243 XXX XXX XXX">
+</div>
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Adresse (Quartier) *
+</label>
+<input type="text" name="address" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="Quartier de résidence">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Groupe d'affectation *
+</label>
+<select name="group" required id="soulGroupSelect"
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+<option value="">Sélectionner un groupe</option>
+</select>
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Détails de la décision spirituelle
+</label>
+<textarea name="decision" rows="4"
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="Décrivez la conversion, les circonstances, les prochaines étapes..."></textarea>
+</div>
+
+<div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
+<button type="submit" class="flex-1 gradient-bg text-white font-semibold py-3 px-6 rounded-xl hover:opacity-90 transition-opacity shadow-lg">
+Enregistrer l'âme
+</button>
+<button type="button" onclick="showPage('soulsPage')" class="flex-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 font-semibold py-3 px-6 rounded-xl transition-colors">
+Annuler
+</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- Evangelists Management -->
+<div id="evangelistsPage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-6xl mx-auto">
+<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+<div>
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Équipe d'évangélisation</h2>
+<p class="text-gray-600 dark:text-gray-400">Gestion des évangélistes et coordonnateurs</p>
+</div>
+<button id="addEvangelistBtn" onclick="showPage('addEvangelistPage')" class="gradient-bg text-white px-6 py-3 rounded-xl font-medium hover:opacity-90 transition-opacity shadow-lg flex items-center">
+<i data-lucide="user-plus" class="w-5 h-5 mr-2"></i>
+Ajouter un évangéliste
+</button>
+</div>
+
+<div id="evangelistsGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<!-- Populated by JavaScript -->
+</div>
+</div>
+</div>
+
+<!-- Add Evangelist Form -->
+<div id="addEvangelistPage" class="hidden h-full overflow-y-auto p-4">
+<div class="max-w-2xl mx-auto">
+<div class="mb-6">
+<h2 class="text-2xl font-bold text-gray-900 dark:text-white">Nouvel évangéliste</h2>
+<p class="text-gray-600 dark:text-gray-400">Ajouter un membre à l'équipe</p>
+</div>
+
+<form id="evangelistForm" class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Nom complet *
+</label>
+<input type="text" name="fullName" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="Nom et prénom">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Nom d'utilisateur *
+</label>
+<input type="text" name="username" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="nom_utilisateur">
+</div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Téléphone *
+</label>
+<input type="tel" name="phone" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="+243 XXX XXX XXX">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Rôle *
+</label>
+<select name="role" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+<option value="">Sélectionner un rôle</option>
+<option value="Évangéliste">Évangéliste</option>
+<option value="Adjoint">Adjoint</option>
+<option value="Coordonnateur">Coordonnateur</option>
+</select>
+</div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Adresse *
+</label>
+<input type="text" name="address" required
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors"
+placeholder="Adresse de résidence">
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Groupe *
+</label>
+<select name="group" required id="evangelistGroupSelect"
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+<option value="">Sélectionner un groupe</option>
+</select>
+</div>
+</div>
+
+<div>
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+Date de baptême
+</label>
+<input type="date" name="baptismDate"
+class="w-full px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+</div>
+
+<div class="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
+<p class="text-sm text-blue-800 dark:text-blue-300">
+<i data-lucide="info" class="w-4 h-4 inline mr-2"></i>
+Le mot de passe par défaut sera le nom d'utilisateur. L'utilisateur pourra le modifier depuis son profil.
+</p>
+</div>
+
+<div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
+<button type="submit" class="flex-1 gradient-bg text-white font-semibold py-3 px-6 rounded-xl hover:opacity-90 transition-opacity shadow-lg">
+Ajouter l'évangéliste
+</button>
+<button type="button" onclick="showPage('evangelistsPage')" class="flex-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 font-semibold py-3 px-6 rounded-xl transition-colors">
+Annuler
+</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- Chat -->
+<div id="chatPage" class="hidden h-full flex flex-col">
+<div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-3">
+<div class="gradient-bg w-12 h-12 rounded-full flex items-center justify-center">
+<i data-lucide="message-circle" class="w-6 h-6 text-white"></i>
+</div>
+<div>
+<h3 class="text-lg font-semibold text-gray-900 dark:text-white" id="chatTitle">Chat - Centre-ville</h3>
+<p class="text-sm text-gray-600 dark:text-gray-400" id="chatSubtitle">5 membres en ligne</p>
+</div>
+</div>
+<div class="flex items-center space-x-2">
+<div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+<span class="text-sm text-green-600 dark:text-green-400 font-medium">En ligne</span>
+</div>
+</div>
+</div>
+
+<div class="flex-1 overflow-y-auto p-4 space-y-4" id="chatMessages">
+<!-- Messages populated by JavaScript -->
+</div>
+
+<div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
+<div class="flex space-x-3">
+<input type="text" id="messageInput" placeholder="Tapez votre message..."
+class="flex-1 px-4 py-3 text-base border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-primary focus:ring-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors">
+<button id="sendMessageBtn" class="gradient-bg text-white px-6 py-3 rounded-xl hover:opacity-90 transition-opacity shadow-lg">
+<i data-lucide="send" class="w-5 h-5"></i>
+</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Bottom Navigation -->
+<nav class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-2 py-1">
+<div class="flex justify-around">
+<button onclick="showPage('dashboardPage')" class="nav-btn flex flex-col items-center p-3 rounded-xl transition-all" data-page="dashboardPage">
+<i data-lucide="home" class="w-6 h-6 mb-1"></i>
+<span class="text-xs font-medium">Accueil</span>
+</button>
+<button onclick="showPage('soulsPage')" class="nav-btn flex flex-col items-center p-3 rounded-xl transition-all" data-page="soulsPage">
+<i data-lucide="heart" class="w-6 h-6 mb-1"></i>
+<span class="text-xs font-medium">Âmes</span>
+</button>
+<button onclick="showPage('reportsPage')" class="nav-btn flex flex-col items-center p-3 rounded-xl transition-all" data-page="reportsPage">
+<i data-lucide="file-text" class="w-6 h-6 mb-1"></i>
+<span class="text-xs font-medium">Rapports</span>
+</button>
+<button onclick="showPage('attendancePage')" class="nav-btn flex flex-col items-center p-3 rounded-xl transition-all" data-page="attendancePage">
+<i data-lucide="calendar-check" class="w-6 h-6 mb-1"></i>
+<span class="text-xs font-medium">Présence</span>
+</button>
+<button onclick="showPage('evangelistsPage')" class="nav-btn flex flex-col items-center p-3 rounded-xl transition-all" data-page="evangelistsPage">
+<i data-lucide="users" class="w-6 h-6 mb-1"></i>
+<span class="text-xs font-medium">Équipe</span>
+</button>
+<button onclick="showPage('chatPage')" class="nav-btn flex flex-col items-center p-3 rounded-xl transition-all" data-page="chatPage">
+<i data-lucide="message-circle" class="w-6 h-6 mb-1"></i>
+<span class="text-xs font-medium">Chat</span>
+</button>
+</div>
+</nav>
+</div>
+</div>
+
+<script src="firebase-config.js"></script>
+</body>
+</html>
